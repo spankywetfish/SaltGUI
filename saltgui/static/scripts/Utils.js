@@ -257,7 +257,7 @@ export class Utils {
 
     const menuAndFieldDiv = Utils.createDiv("search-menu-and-field", "");
 
-    const searchOptionsMenu = new DropDownMenu(menuAndFieldDiv, true);
+    const searchOptionsMenu = new DropDownMenu(menuAndFieldDiv, "smaller");
 
     const input = Utils.createElem("input", "filter-text");
     input.type = "text";
@@ -348,11 +348,11 @@ export class Utils {
 
     // hide/show search box (the block may become more complicated later)
     const input = pSearchBlock.querySelector("input");
-    input.onkeyup = (ev) => {
-      if (ev.key === "Escape") {
+    input.onkeyup = (keyUpEvent) => {
+      if (keyUpEvent.key === "Escape") {
         Utils._updateTableFilter(pTable, "", menuItems);
         Utils.hideShowTableSearchBar(pSearchBlock, pTable);
-        // return;
+        keyUpEvent.stopPropagation();
       }
     };
     input.oninput = () => {
@@ -645,5 +645,32 @@ export class Utils {
     for (const ddc of allDropdownContent) {
       ddc.style.display = pHide ? "none" : "";
     }
+  }
+
+  static isValidKeyUpEvent (pKeyUpEvent) {
+    if (pKeyUpEvent.altKey) {
+      return false;
+    }
+    if (pKeyUpEvent.ctrlKey) {
+      return false;
+    }
+    if (pKeyUpEvent.metaKey) {
+      return false;
+    }
+    if (pKeyUpEvent.shiftKey) {
+      return false;
+    }
+    if (pKeyUpEvent.isComposing) {
+      return false;
+    }
+    if (pKeyUpEvent.target !== document.body) {
+      // not when focus is in a text field
+      return false;
+    }
+    if (pKeyUpEvent.key.length > 1) {
+      // not a simple key
+      return false;
+    }
+    return true;
   }
 }

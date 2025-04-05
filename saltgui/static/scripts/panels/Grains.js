@@ -1,6 +1,5 @@
 /* global jsonPath */
 
-import {DropDownMenu} from "../DropDown.js";
 import {Output} from "../output/Output.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
@@ -17,8 +16,8 @@ export class GrainsPanel extends Panel {
       "columns by configuring their name in the server-side configuration file.",
       "See README.md for more details."
     ]);
-    this.addTable(["Minion", "Status", "Salt version", "OS version", "Grains", "-menu-"]);
-    this.setTableClickable();
+    this.addWarningField();
+    this.addTable(["-menu-", "Minion", "Status", "Salt version", "OS version", "Grains"]);
 
     // cannot initialize sorting before all columns are present
     // this.setTableSortable("Minion", "asc");
@@ -35,17 +34,22 @@ export class GrainsPanel extends Panel {
       // the div is not added to the DOM yet
       const tr = this.div.querySelector("#grains-table-thead-tr");
       for (const previewGrain of this.previewGrains) {
-        const th = Utils.createElem("th", "", previewGrain);
+        const previewGrainTitle = previewGrain.replaceAll(/[=].*$/g, "");
+        const th = Utils.createElem("th", "", previewGrainTitle);
         tr.appendChild(th);
       }
       this.previewColumsAdded = true;
+      this.setTableClickable("page");
     }
 
     // initialize sorting after all columns are present
     this.setTableSortable("Minion", "asc");
 
+    const useCacheGrains = Utils.getStorageItemBoolean("session", "use_cache_for_grains", false);
+    this.setWarningText("info", useCacheGrains ? "the content of this screen is based on cached grains info, minion status or grain info may not be accurate" : "");
+
     const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
-    const localGrainsItemsPromise = this.api.getLocalGrainsItems(null);
+    const localGrainsItemsPromise = useCacheGrains ? this.api.getRunnerCacheGrains(null) : this.api.getLocalGrainsItems(null);
 
     this.nrMinions = 0;
 
@@ -78,18 +82,17 @@ export class GrainsPanel extends Panel {
 
     const minionIds = keys.minions.sort();
     for (const minionId of minionIds) {
-      const minionTr = this.addMinion(minionId, 1 + this.previewGrains.length);
+      const minionTr = this.addMinion(minionId, this.previewGrains.length);
 
       // preliminary dropdown menu
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemShowGrains(menu, minionId);
+      this._addMenuItemShowGrains(minionTr.dropdownmenu, minionId);
 
       for (let i = 0; i < this.previewGrains.length; i++) {
         minionTr.appendChild(Utils.createTd());
       }
 
       minionTr.addEventListener("click", (pClickEvent) => {
-        this.router.goTo("grains-minion", {"minionid": minionId});
+        this.router.goTo("grains-minion", {"minionid": minionId}, undefined, pClickEvent);
         pClickEvent.stopPropagation();
       });
     }
@@ -106,7 +109,6 @@ export class GrainsPanel extends Panel {
     minionTr.appendChild(Utils.createTd("saltversion"));
     minionTr.appendChild(Utils.createTd("os"));
     minionTr.appendChild(Utils.createTd("graininfo"));
-    minionTr.appendChild(Utils.createTd("run-command-button"));
     for (let i = 0; i < this.previewGrains.length; i++) {
       minionTr.appendChild(Utils.createTd());
     }
@@ -129,28 +131,28 @@ export class GrainsPanel extends Panel {
       minionTr.appendChild(grainInfoTd);
     }
 
-    const menu = new DropDownMenu(minionTr, true);
-    this._addMenuItemShowGrains(menu, pMinionId);
+    this._addMenuItemShowGrains(minionTr.dropdownmenu, pMinionId);
 
     // add the preview columns
     /* eslint-disable max-depth */
-    for (const grainName of this.previewGrains) {
+    for (const previewGrain of this.previewGrains) {
       const td = Utils.createTd();
       if (typeof pMinionData === "object") {
-        if (grainName.startsWith("$")) {
+        const previewGrainValue = previewGrain.replaceAll(/^[^=]*=/g, "");
+        if (previewGrainValue.startsWith("$")) {
           // it is a json path
-          const obj = jsonPath(pMinionData, grainName);
+          const obj = jsonPath(pMinionData, previewGrainValue);
           if (Array.isArray(obj)) {
             td.innerText = Output.formatObject(obj[0]);
             td.classList.add("grain-value");
           }
         } else {
           // a plain grain-name or a path in the grains.get style
-          const grainNames = grainName.split(":");
+          const grainNames = previewGrainValue.split(":");
           let obj = pMinionData;
-          for (const gn of grainNames) {
+          for (const grainName of grainNames) {
             if (obj) {
-              obj = obj[gn];
+              obj = obj[grainName];
             }
           }
           if (obj) {
@@ -167,8 +169,8 @@ export class GrainsPanel extends Panel {
   }
 
   _addMenuItemShowGrains (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show grains", () => {
-      this.router.goTo("grains-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show grains", (pClickEvent) => {
+      this.router.goTo("grains-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 }

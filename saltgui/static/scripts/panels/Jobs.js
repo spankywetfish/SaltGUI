@@ -1,5 +1,6 @@
 /* global */
 
+import {Character} from "../Character.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
 
@@ -74,7 +75,7 @@ export class JobsPanel extends Panel {
         // prevent column becoming too wide
         // yes, the addition of running/returned may again make
         // the string longer than 50 characters, we accept that
-        targetText = targetText.substring(0, maxTextLength) + "...";
+        targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
       }
       // then add the operational statistics
       if (job.Running && job.Running.length > 0) {
@@ -166,12 +167,16 @@ export class JobsPanel extends Panel {
     this._hideJobs.push("schedule.run_job");
     this._hideJobs.push("sys.doc");
     // runner jobs
+    this._hideJobs.push("runner.cache.grains");
+    this._hideJobs.push("runner.cache.pillar");
     this._hideJobs.push("runner.doc.runner");
     this._hideJobs.push("runner.doc.wheel");
     this._hideJobs.push("runner.jobs.active");
     this._hideJobs.push("runner.jobs.list_job");
     this._hideJobs.push("runner.jobs.list_jobs");
     this._hideJobs.push("runner.manage.versions");
+    // do not hide "runner.state.orchestrate"
+    this._hideJobs.push("runner.state.orchestrate_show_sls");
     // wheel jobs
     this._hideJobs.push("wheel.config.values");
     this._hideJobs.push("wheel.key.accept");

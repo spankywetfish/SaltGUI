@@ -1,6 +1,7 @@
 /* global */
 
 import {Character} from "../Character.js";
+import {LoginPanel} from "../panels/Login.js";
 import {Output} from "../output/Output.js";
 import {OutputYaml} from "../output/OutputYaml.js";
 import {Panel} from "./Panel.js";
@@ -20,9 +21,14 @@ export class OptionsPanel extends Panel {
       "Other names are regular variables from the master file.",
       "Changes made in this screen are valid for this session ONLY."
     ]);
+
+    const txt = Utils.createDiv("", Character.CIRCLED_INFORMATION_SOURCE + " Any changes made here are for this login session only");
+    this.div.append(txt);
+
     this.addTable(["Name", "Value"]);
 
     this.options = [
+      ["saltgui", "version"],
       ["eauth", "session"],
       ["user", "session"],
       ["token", "session"],
@@ -66,6 +72,9 @@ export class OptionsPanel extends Panel {
       ["ipnumber_field", "saltgui", "fqdn_ip4"],
       ["ipnumber_prefix", "saltgui", "(none)"],
 
+      ["max-show-highstates", "saltgui", "10"],
+      ["max-highstate-states", "saltgui", "20"],
+
       /* note that this is not in the alphabetic order */
       ["show-saltenvs", "saltgui", "(all)"],
       ["hide-saltenvs", "saltgui", "(none)"],
@@ -82,6 +91,14 @@ export class OptionsPanel extends Panel {
       ],
       ["preview-grains", "saltgui", "(none)"],
       ["public-pillars", "saltgui", "(none)"],
+      [
+        "use-cache-for-grains", "saltgui", "false",
+        [["grains", "true", "false"]]
+      ],
+      [
+        "use-cache-for-pillar", "saltgui", "false",
+        [["pillar", "true", "false"]]
+      ],
       ["templates", "saltgui", "(none)"],
       [
         "tooltip-mode", "saltgui", "full",
@@ -173,6 +190,14 @@ export class OptionsPanel extends Panel {
             radio.addEventListener("change", () => {
               this._newFullReturn();
             });
+          } else if (pName === "use-cache-for-grains") {
+            radio.addEventListener("change", () => {
+              this._newUseCacheForGrains();
+            });
+          } else if (pName === "use-cache-for-pillar") {
+            radio.addEventListener("change", () => {
+              this._newUseCacheForPillar();
+            });
           }
 
           if (pName === "state-output" && itemValue === "full_id") {
@@ -253,14 +278,6 @@ export class OptionsPanel extends Panel {
     }
   }
 
-  onHide () {
-    if (this.updateExpiresTimer) {
-      // stop the timer when noone is looking
-      window.clearInterval(this.updateExpiresTimer);
-      this.updateExpiresTimer = null;
-    }
-  }
-
   onShow () {
     // build the controls for all options
     for (const option of this.options) {
@@ -281,7 +298,9 @@ export class OptionsPanel extends Panel {
       const valuesArr = option[3];
 
       let value;
-      if (category === "session") {
+      if (category === "version") {
+        value = LoginPanel.version;
+      } else if (category === "session") {
         value = loginResponse[name];
       } else if (category === null) {
         value = Utils.getStorageItem("session", name.replace(/-/g, "_"));
@@ -305,7 +324,7 @@ export class OptionsPanel extends Panel {
       }
 
       if (category === "session" && name === "expire") {
-        this.updateExpiresTimer = window.setInterval(() => {
+        this.updateExpiresInterval = window.setInterval(() => {
           // just redo the whole text-block
           OptionsPanel._enhanceSessionExpire(td, value, sessionStart);
         }, 1000);
@@ -347,6 +366,14 @@ export class OptionsPanel extends Panel {
           }
         }
       }
+    }
+  }
+
+  onHide () {
+    if (this.updateExpiresInterval) {
+      // stop the timer when nobody is looking
+      window.clearInterval(this.updateExpiresInterval);
+      this.updateExpiresInterval = null;
     }
   }
 
@@ -450,6 +477,30 @@ export class OptionsPanel extends Panel {
     // refresh the right-hand panel based on the new option value
     Router.currentPage.stats.clearTable();
     Router.currentPage.stats.onShow();
+  }
+
+  _newUseCacheForGrains () {
+    let value = "";
+    /* eslint-disable curly */
+    if (this._isSelected("use-cache-for-grains", "grains", "false")) value = "false";
+    if (this._isSelected("use-cache-for-grains", "grains", "true")) value = "true";
+    value = value.replace(/^,/, "");
+    /* eslint-enable curly */
+    const useCacheForGrainsTd = this.div.querySelector("#option-use-cache-for-grains-value");
+    useCacheForGrainsTd.innerText = value || "(none)";
+    Utils.setStorageItem("session", "use_cache_for_grains", value);
+  }
+
+  _newUseCacheForPillar () {
+    let value = "";
+    /* eslint-disable curly */
+    if (this._isSelected("use-cache-for-pillar", "pillar", "false")) value = "false";
+    if (this._isSelected("use-cache-for-pillar", "pillar", "true")) value = "true";
+    value = value.replace(/^,/, "");
+    /* eslint-enable curly */
+    const useCacheForPillarTd = this.div.querySelector("#option-use-cache-for-pillar-value");
+    useCacheForPillarTd.innerText = value || "(none)";
+    Utils.setStorageItem("session", "use_cache_for_pillar", value);
   }
 
   _newDatetimeFractionDigits () {

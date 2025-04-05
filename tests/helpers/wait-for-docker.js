@@ -1,6 +1,6 @@
-/* global require */
+/* global */
 
-const request = require("request");
+import request from "request";
 
 const url = "http://localhost:3333";
 
@@ -12,7 +12,8 @@ const waitfordocker = () => {
     on("response", () => {
       console.log("docker setup is ready");
     }).
-    on("error", () => {
+    on("error", (err) => {
+      console.log("docker setup is NOT ready yet:", err.code);
       setTimeout(waitfordocker, 1000);
     });
 };

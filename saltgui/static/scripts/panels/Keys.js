@@ -1,7 +1,6 @@
 /* global */
 
 import {Character} from "../Character.js";
-import {DropDownMenu} from "../DropDown.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
 
@@ -28,7 +27,7 @@ export class KeysPanel extends Panel {
       "automatically refreshed."
     ]);
     this.addWarningField();
-    this.addTable(["Minion", "Status", "-menu-", "Fingerprint"], "data-list-keys");
+    this.addTable(["-menu-", "Minion", "Status", "Fingerprint"], "data-list-keys");
     this.setTableSortable("Status", "asc");
     this.addMsg();
 
@@ -47,6 +46,7 @@ export class KeysPanel extends Panel {
     this.nrRejected = 0;
 
     this.showSyndicInfo(false);
+    this.showClusterInfo();
 
     this.loadMinionsTxt();
 
@@ -56,7 +56,14 @@ export class KeysPanel extends Panel {
         this._handleWheelKeyFinger(pWheelKeyFingerData);
         return true;
       }, (pWheelKeyFingerMsg) => {
-        const allMinionsErr = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, JSON.stringify(pWheelKeyFingerMsg));
+        const msg = JSON.stringify(pWheelKeyFingerMsg);
+        const allMinionsErr1 = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, msg);
+        const allMinionsErr2 = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions_pre, msg);
+        const allMinionsErr3 = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions_rejected, msg);
+        const allMinionsErr4 = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions_denied, msg);
+        /* eslint-disable prefer-object-spread */
+        const allMinionsErr = Object.assign({}, allMinionsErr1, allMinionsErr2, allMinionsErr3, allMinionsErr4);
+        /* eslint-enable prefer-object-spread */
         this._handleWheelKeyFinger({"return": [{"data": {"return": {"minions": allMinionsErr}}}]});
         return false;
       });
@@ -93,6 +100,13 @@ export class KeysPanel extends Panel {
       warningText += " Keys for minions that are connected to other salt-masters are not always shown in this SaltGUI.";
       warningText += " Commands issued from this salt-master may involve minions that are not listed in SaltGUI.";
       this.setWarningText("info", warningText.trim());
+    }
+  }
+
+  showClusterInfo () {
+    const clusterInfo = Utils.getStorageItem("session", "cluster_info");
+    if (clusterInfo) {
+      this.setWarningText("info", clusterInfo);
     }
   }
 
@@ -213,9 +227,10 @@ export class KeysPanel extends Panel {
     // capitalize the first word (can only be "no")
     txt = txt.replace(/^no/, "No");
 
-    this.nrUnaccepted = cnt["enaccepted"];
+    this.nrUnaccepted = cnt["unaccepted"];
+    this.nrAccepted = cnt["accepted"];
+    this.nrDenied = cnt["denied"];
     this.nrRejected = cnt["rejected"];
-    // others are reported but not saved
 
     super.updateFooter(txt);
   }
@@ -254,7 +269,7 @@ export class KeysPanel extends Panel {
       }
     }
 
-    const minionIdTd = pMinionTr.querySelector("td");
+    const minionIdTd = pMinionTr.querySelectorAll("td")[1];
     const minionIdSpan = minionIdTd.querySelector("span");
 
     if (txt) {
@@ -290,7 +305,7 @@ export class KeysPanel extends Panel {
 
     // force same columns on all rows
     // do not use class "fingerprint" yet
-    minionTr.appendChild(Utils.createTd("os", "loading..."));
+    minionTr.appendChild(Utils.createTd("os", "loading" + Character.HORIZONTAL_ELLIPSIS));
   }
 
   _addRejectedMinion (pMinionId, pMinionsDict) {
@@ -312,7 +327,7 @@ export class KeysPanel extends Panel {
 
     // force same columns on all rows
     // do not use class "fingerprint" yet
-    minionTr.appendChild(Utils.createTd("os", "loading..."));
+    minionTr.appendChild(Utils.createTd("os", "loading" + Character.HORIZONTAL_ELLIPSIS));
 
     const tbody = this.table.tBodies[0];
     tbody.appendChild(minionTr);
@@ -337,7 +352,7 @@ export class KeysPanel extends Panel {
 
     // force same columns on all rows
     // do not use class "fingerprint" yet
-    minionTr.appendChild(Utils.createTd("os", "loading..."));
+    minionTr.appendChild(Utils.createTd("os", "loading" + Character.HORIZONTAL_ELLIPSIS));
 
     const tbody = this.table.tBodies[0];
     tbody.appendChild(minionTr);
@@ -364,7 +379,7 @@ export class KeysPanel extends Panel {
 
     // force same columns on all rows
     // do not use class "fingerprint" yet
-    minionTr.appendChild(Utils.createTd("os", "loading..."));
+    minionTr.appendChild(Utils.createTd("os", "loading" + Character.HORIZONTAL_ELLIPSIS));
 
     const tbody = this.table.tBodies[0];
     if (pInsertAtTop) {
@@ -398,12 +413,10 @@ export class KeysPanel extends Panel {
 
   _addDropDownMenu (pMinionTr, pMinionId, pStatusField) {
     // final dropdownmenu
-    const menu = new DropDownMenu(pMinionTr, true);
-    this._addMenuItemWheelKeyAccept1(menu, pMinionId, pStatusField);
-    this._addMenuItemWheelKeyReject(menu, pMinionId, pStatusField);
-    this._addMenuItemWheelKeyDelete(menu, pMinionId, pStatusField);
-    this._addMenuItemWheelKeyAccept2(menu, pMinionId, pStatusField);
-    pMinionTr.saltguidropdownmenu = menu;
+    this._addMenuItemWheelKeyAccept1(pMinionTr.dropdownmenu, pMinionId, pStatusField);
+    this._addMenuItemWheelKeyReject(pMinionTr.dropdownmenu, pMinionId, pStatusField);
+    this._addMenuItemWheelKeyDelete(pMinionTr.dropdownmenu, pMinionId, pStatusField);
+    this._addMenuItemWheelKeyAccept2(pMinionTr.dropdownmenu, pMinionId, pStatusField);
   }
 
   _addMenuItemWheelKeyAccept1 (pMenu, pMinionId, pStatusField) {
@@ -647,7 +660,7 @@ export class KeysPanel extends Panel {
       }
       // keep the fingerprint
       // update the menu because it may be in a hidden state
-      tr.saltguidropdownmenu.verifyAll();
+      tr.dropdownmenu.verifyAll();
       this.panelMenu.verifyAll();
     } else if (this.table.querySelector("tr") === null) {
       // only when the full list is already available

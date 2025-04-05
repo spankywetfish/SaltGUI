@@ -1,5 +1,6 @@
 /* global */
 
+import {Character} from "../Character.js";
 import {DropDownMenu} from "../DropDown.js";
 import {Output} from "../output/Output.js";
 import {Panel} from "./Panel.js";
@@ -11,7 +12,7 @@ export class SchedulesMinionPanel extends Panel {
   constructor () {
     super("schedules-minion");
 
-    this.addTitle("Schedules on ...");
+    this.addTitle("Schedules on " + Character.HORIZONTAL_ELLIPSIS);
     this.addPanelMenu();
     this._addPanelMenuItemScheduleEnableWhenNeeded();
     this._addPanelMenuItemScheduleDisableWhenNeeded();
@@ -19,10 +20,12 @@ export class SchedulesMinionPanel extends Panel {
     this._addPanelMenuItemScheduleAddCron();
     this._addPanelMenuItemScheduleAddOnce();
     this.addSearchButton();
-    this.addCloseButton();
-    this.addTable(["Name", "-menu-", "Details"]);
+    if (Utils.getQueryParam("popup") !== "true") {
+      this.addCloseButton();
+    }
+    this.addTable(["-menu-", "Name", "Details"]);
     this.setTableSortable("Name", "asc");
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
   }
 
@@ -92,10 +95,11 @@ export class SchedulesMinionPanel extends Panel {
 
       const tr = Utils.createTr();
 
+      const scheduleMenu = new DropDownMenu(tr, "smaller");
+
       const nameTd = Utils.createTd("schedule-name", scheduleName);
       tr.appendChild(nameTd);
 
-      const scheduleMenu = new DropDownMenu(tr, true);
       const scheduleModifyCmdArr = ["schedule.modify", scheduleName];
       for (const key in schedule) {
         const value = schedule[key];
@@ -178,7 +182,7 @@ export class SchedulesMinionPanel extends Panel {
         "schedule.add",
         "<name>",
         "function=", "<function>",
-        "cron=", "<cron>"
+        "cron=", "*/15 * * * *"
       ];
       this.runCommand("", minionId, cmdArr);
     });

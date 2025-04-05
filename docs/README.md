@@ -6,10 +6,15 @@ The version tagged `release` is the latest released version. The version `master
 
 See [SaltGUI documentation](https://erwindon.github.io/SaltGUI/) for the complete documentation.
 
-IMPORTANT: since Salt version 3006, it is needed to add configuration option `netapi_enable_clients` to allow salt-api - and thus SaltGUI - to work. See also [netapi-enable-clients.html](https://docs.saltproject.io/en/3006.0/topics/netapi/netapi-enable-clients.html#netapi-enable-clients). Additionally, any Python
+IMPORTANT: since Salt version 3006, it is needed to add the configuration option `netapi_enable_clients` to allow salt-api - and thus SaltGUI - to work. See also [netapi-enable-clients.html](https://docs.saltproject.io/en/latest/topics/netapi/netapi-enable-clients.html#netapi-enable-clients). Additionally, any Python
 packages that the SaltStack installation also depends on, must be installed with `salt-pip`. This includes authentication plugins
 such as `yubico_client`, or execution modules such as `boto3_sns`.
 
+IMPORTANT: The SaltGUI team can only support SaltStack versions 3006 and higher. Versions before that are no longer published by the SaltStack team.
+That makes it very hard to perform proper testing for SaltGUI releases.
+We suggest to upgrade the SaltStack installation when you are still using a version that is older than that.
+
+[![CodeQL](https://github.com/erwindon/SaltGUI/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/erwindon/SaltGUI/actions/workflows/codeql-analysis.yml)
 
 ## Screenshots
 ![overview](screenshots/overview.png)
@@ -30,18 +35,22 @@ such as `yubico_client`, or execution modules such as `boto3_sns`.
 - View the schedules for a particular minion
 - View the values for pillars for a particular minion
 - View the beacons for a particular minion
-- View the nodegroups with their member minions
 - View the live events on the salt-event bus
 - View internal documentation for any salt command
 - View external documentation for any salt command
 - View minions organized by node-group
+- View details optionally in a separate windows
 - Define your own custom documentation for commands
 - Match list of minions against reference list
 - Match status of minions against reference list
+- Keyboard control for top-level navigation
+- Keyboard control to apply templates
+- Choose between live info and cached info for grains/pillar
+- View details of orchestrations and allow to start them
 
 
 ## Quick start using PAM as authentication method
-- Install `salt-api` - this is available in the Salt PPA package which should already been installed if you're using Salt
+- Install `salt-api` - this is available in the Salt repo which should already be known if you're using Salt
 - Open the master config /etc/salt/master
 - Find `external_auth` and configure as following (see the note below!):
 
@@ -62,7 +71,7 @@ netapi_enable_clients:
     - wheel
 ```
 
-- See [Permissions](docs/PERMISSIONS.md) for more restricted security configurations.
+- See [Permissions](PERMISSIONS.md) for more restricted security configurations.
 - The username 'saltuser1' is only an example. Generic accounts are not recommended, use personal accounts instead. Or use a user-group, see [EAUTH](https://docs.saltproject.io/en/latest/topics/eauth/index.html) for details.
 - Multiple entries like `saltuser1` can be added when you have multiple users.
 - `saltuser1` is a unix (PAM) user, make sure it exists or create a new one.
@@ -87,7 +96,7 @@ rest_cherrypy:
 
 **Note: With this configuration, the user has access to all salt modules available, maybe this is not what you want**
 
-Please read [Permissions](docs/PERMISSIONS.md) for more information.
+Please read [Permissions](PERMISSIONS.md) for more information.
 
 
 ## Authentication
@@ -111,7 +120,23 @@ In that case, that method will always be used.
 Note that SaltGUI cannot inspect the `master` file to see which authentication methods are actually in use.
 This is because the salt-api can only read the file after login.
 
+Note that adding the `rest` authentication method in configuration section `external_auth` forces the parameter `keep_acl_in_token` to become `true`.
+That again changes the behavior of the other authentication methods and may lead to unexpected authentication problems.
+
+When the file is absent or empty, the defaults apply.
+Use an empty file to prevent the otherwise harmless [404](https://www.wikipedia.org/wiki/HTTP_404) error.
+
 See the [EAUTH documentation](https://docs.saltstack.com/en/latest/topics/eauth/index.html) and the [Salt auth source code](https://github.com/saltstack/salt/tree/master/salt/auth) for more information.
+
+
+## Browser tabs
+SaltGUI is a single page web-application.
+In cases where you would zoom in on details, it is possible to open a new browser tab with the requested details.
+Use CTRL-click to open the page in a new tab.
+Use ALT-click to open the page in a new tab and also make that the current tab.
+This works for clicks on table-rows and for clicks on popup-menu items.
+These functions are a bit browser-dependent, but all major browsers seem to follow this behavior.
+When a new tab is opened by SaltGUI, it does not contain the menu bar items, secondary panels or a close-button inside the page.
 
 
 ## Command Box
@@ -184,6 +209,7 @@ saltgui_templates:
         description: First template
         target: "*"
         command: test.fib num=10
+        key: "f"
     template2:
         description: Second template
         targettype: glob
@@ -212,6 +238,9 @@ saltgui_templates:
 When at least one template is assigned to a category, then you can select a template category before
 selecting the actual category. Otherwise that choice remains hidden. Templates can be in multiple categories
 when a list of categories is assigned.
+
+When a key is assigned to a template, then you can activate a template by typing that key
+while using any screen in SaltGUI. Only keys that can be typed without shift/alt/ctrl are useable.
 
 
 ## Jobs
@@ -253,13 +282,27 @@ The names can be specified as simple names like the example above.
 Alternatively, the [grains.get](https://docs.saltstack.com/en/latest/ref/modules/all/salt.modules.grains.html#salt.modules.grains.get) notation can be used to get more detailed information. The separator is always `:`. e.g. `locale_info:timezone`.
 Alternatively, the [jsonpath](https://www.w3resource.com/JSON/JSONPath-with-JavaScript.php) notation can be used to allow even more freedom. Jsonpath is used when the text starts with a `$`. e.g. `$.ip4_interfaces.eth0[0]`.
 
+The configured value can be prefixed with a title and an '=' sign to specify the title to be used on the screen.
+e.g. `IP-Number=$.ip4_interfaces.eth0[0]` shows `IP-Number` as title, but uses the value `$.ip4_interfaces.eth0[0]` for each minion.
+Note that when the value somehow contains an '=' sign, then a title must be provided to prevent confusion.
+
 In any table where the the minion status is shown and where the grain-values of the minion are also known, the minion status is
 replaced with the the best value from grain `fqdn_ip4`.
 The best value is chosen by first eliminating all values that appear for more than one minion.
 Then the first value that has the most specific network prefix is used.
 It is possible to chose a different grain by setting variable `saltgui_ipnumber_field` in salt master configuration file `/etc/salt/master`.
-It is possible to restrict the eligible IP-numbers by setting variable `saltgui_ipnumber_prefix` in salt master configuration file `/etc/salt/master`. Only values with that string-prefix are considered.
+It is possible to restrict the eligible IP-numbers by setting variable `saltgui_ipnumber_prefix` in salt master configuration file `/etc/salt/master`. Only values with that string-prefix are considered. You can specify several prefixes, for example:
+```
+saltgui_ipnumber_prefix:
+    - 192.168
+    - 10.10
+```
 The display of the IP-numbers can simply be disabled by choosing a non-existing grain or by choosing a non-existing prefix.
+
+SaltGUI will retrieve cached grains information when variable `saltgui_use_cache_for_grains` is set to `true`.
+In that case, unreachable minions will appear without warnings for that.
+In all cases, the information may be less accurate.
+A warning for offline minions is only shown on the Minions panel.
 
 ## Pillars
 Pillars potentially contain security senstitive information.
@@ -275,6 +318,11 @@ saltgui_public_pillars:
     - pub_.*
 ```
 
+SaltGUI will retrieve cached pillar information when variable `saltgui_use_cache_for_pillar` is set to `true`.
+In that case, unreachable minions will appear without warnings for that.
+In all cases, the information may be less accurate.
+A warning for offline minions is only shown on the Minions panel.
+
 ## Nodegroups
 The Nodegroups page shows all minions, but groups the minions by their nodegroup.
 Since the group membership can only (reliably) be determined by executing salt commands, the overview takes some time to build.
@@ -285,7 +333,9 @@ Even the minion names that are in the nodegroup, but which do not actually exist
 
 ## Highstate
 The Highstate page provides an overview of the minions and their latest state information.
-At most 10 highstate jobs (`state.apply` or `state.highstate`) are considered.
+At most `saltgui_max_show_highstates` (10 if not set) highstate jobs (`state.apply` or `state.highstate`) are considered.
+
+More than `saltgui_max_highstate_states` (20 if not set) of states switches to summary from detailed view.
 
 Individual low-states can be re-tried by clicking on their state symbol.
 Note that since the output of the `state.sls_id` commands is not considered in this overview,
@@ -307,6 +357,22 @@ saltgui_hide_saltenvs:
 ```
 Typically only one of these variables should be set.
 Jobs that were started without the `saltenv` parameter are, for this purpose only, assumed to use the value `default` for this parameter. This allows these jobs to be hidden/showed using the same mechanism. SaltGUI does not replicate the internal logic of the salt-master and/or the salt-minion to determine which saltenv would actually have been used for such jobs.
+
+## Orchestrations
+The Orchestrations page shows the available orchestrations with their steps. Name, target and function are listed in separate columns.
+All other details will be visible in the details column. The steps are listed in priority order.
+But note that additional dependencies may cause an alternative execution sequence.
+
+In the configuration files, SaltStack does not clearly distingish between state-configuration and orchestration-configuration.
+SaltGUI only shows information that has the orchestration format.
+
+An orchestration can be executed or tested. The output resembles the output of highstate commands, but now each step is a whole salt command instead of a state.
+Since the orchestration is run by the salt-master, the results are organized for only this host.
+Note that SaltStack uses a slightly different minion-name for that.
+
+Note that each stage is started as a separate job. Neither SaltStack, nor SaltGUI, has information available to somehow group the results.
+
+Unlike the highstate system, there are no events available in the SaltStack that can be used to track the progress of an orchestration.
 
 ## Issues
 The Issues page provides an overview of the system and reports any issues.
@@ -330,7 +396,35 @@ Each issue has its own dropdown-menu, which typically contains:
 But note that there might be more possible solutions, some of which may actually be more preferred.
 * A navigation-command to go to a page for more details.
 
-## Custom command documentation
+## Command documentation
+
+### Internal documentation
+When at least a part of a command is entered, the documentation will have a menu item to run a salt command that collects the internal documentation.
+When the target field is still empty, all minions are asked to produce the documentation.
+Otherwise the given target is used. When using identical minions, there is not much difference, but with minions on different operating systems,  this helps to get the best matching documentation.
+Although multiple minions may return the documentation, only the first answer is actually presented.
+When some minions are offline, it may be useful to specify a target that does not include the offline minions, e.g. by specifying a single minion that is known to be online.
+
+### External documentation
+When the function "Online reference for ..." is used, a set of URLs is produced. The URLs point to the SaltStack documentation on the `docs.saltproject.io` website.
+When more parts of the command are already typed in, then more specific URLs become available.
+This function does not execute a command to any minion.
+When the command-box is opened for the first time, a list of command-providers is retrieved from all minions to determine which providers (categories) are available.
+An alternative target can be specified in the configurationfile for retrieving the list.
+
+To skip retrieving this information, use value `SKIP`.
+```
+test_providers_target: "SKIP"
+```
+
+To specify an alternative target to retrieve this information, use any other value.
+This may be single minion-id, or any other minion pattern.
+The target-type is automatically decided, just like in the "Target" field.
+```
+test_providers_target: "minion7"
+```
+
+### Custom command documentation
 A custom HTML help text can be shown from the "Manual Run" overlay.
 
 To use it,
@@ -356,7 +450,11 @@ It can be used for any information, e.g.:
 - informing users about system availability
 - etc.
 
-The text is stored in file `saltgui/static/salt-motd.txt` or `saltgui/static/salt-motd.html`. The first must be pre-formatted text only. The second one can contain full HTML text. Both are shown when they are present. Note that the message should not contain sensitive data, as its content is shown before logging in.
+The text is stored in file `saltgui/static/salt-motd.txt` or `saltgui/static/salt-motd.html`.
+The first must be pre-formatted text only. The second one can contain full HTML text. Both are shown when they are present.
+When the files are absent or empty, no message is shown.
+Use empty files to prevent the otherwise harmless [404](https://www.wikipedia.org/wiki/HTTP_404) error.
+Note that the message should not contain sensitive data, as its content is shown before logging in.
 
 Alternatively, or additionally, the text can be retrieved from the `master` file entries `saltgui_motd_txt` and `saltgui_motd_html`. These entries can contain sensitive information because its content can only be retrieved after login. But it is still recommended to not let the text contain any sensitive data.
 
@@ -434,6 +532,7 @@ The filename is `saltgui/static/minions.txt`.
 Differences with this file are highlighted on the Keys page.
 Minions that are unexpectedly down are highlighted on the Minions page.
 When the file is absent or empty, no such validation is done.
+Use an empty file to prevent the otherwise harmless [404](https://www.wikipedia.org/wiki/HTTP_404) error.
 It is suggested that the file is generated from a central source,
 e.g. the Azure, AWS or similar cloud portals; or from a company asset management list.
 
@@ -494,12 +593,12 @@ Then browse to [http://localhost:3333/](http://localhost:3333/), you can login w
 ## Testing
 We provide some functional tests and unit tests. They use the docker setup to run the functional tests. You will also need [yarn](https://yarnpkg.com) and [node.js](https://nodejs.org/en/) to run them. When you have docker, yarn and node.js installed, you can run the tests from the root of the repository like this:
 ```
-./runtests.sh
+bash runtests.bash
 ```
 
 To show the browser window + a debugger while running the functional tests you can run:
 ```
-NIGHTMARE_DEBUG=1 ./runtests.sh
+NIGHTMARE_DEBUG=1 bash runtests.bash
 ```
 
 We use the following testing libraries:

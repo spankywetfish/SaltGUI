@@ -12,9 +12,9 @@ export class TemplatesPanel extends Panel {
 
     this.addTitle("Templates");
     this.addSearchButton();
-    this.addTable(["Name", "@Category", "Description", "Target", "Command", "-menu-"], "data-list-templates");
+    this.addTable(["-menu-", "Name", "Category", "Key", "Description", "Target", "Command"], "data-list-templates");
     this.setTableSortable("Name", "asc");
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
   }
 
@@ -25,6 +25,8 @@ export class TemplatesPanel extends Panel {
 
     wheelConfigValuesPromise.then((pWheelConfigValuesData) => {
       this._handleTemplatesWheelConfigValues(pWheelConfigValuesData);
+      this.hideColumn("Category");
+      this.hideColumn("Key");
       return true;
     }, (pWheelConfigValuesMsg) => {
       this._handleTemplatesWheelConfigValues(JSON.stringify(pWheelConfigValuesMsg));
@@ -43,8 +45,6 @@ export class TemplatesPanel extends Panel {
 
     if (templates) {
       Utils.setStorageItem("session", "templates", JSON.stringify(templates));
-      this.setCategoriesTitle(templates);
-      this.showCategoriesColumn(templates);
       TemplatesPanel.getTemplatesCategories(templates);
       Router.updateMainMenu();
     } else {
@@ -63,33 +63,6 @@ export class TemplatesPanel extends Panel {
     const txt = Utils.txtZeroOneMany(this.nrTemplates,
       "No templates", "{0} template", "{0} templates");
     this.setMsg(txt);
-  }
-
-  setCategoriesTitle (templates) {
-    const categoryTh = this.table.querySelectorAll("th")[1];
-    const keys = Object.keys(templates);
-    for (const key of keys) {
-      const template = templates[key];
-      const categories = TemplatesPanel.getTemplateCategories(template);
-      if (categories.length > 1) {
-        categoryTh.innerText = "Categories";
-      }
-    }
-  }
-
-  showCategoriesColumn (templates) {
-    const keys = Object.keys(templates);
-    for (const key of keys) {
-      const template = templates[key];
-      const categories = TemplatesPanel.getTemplateCategories(template);
-      if (categories.length > 1 || categories.length > 0 && categories[0] !== undefined) {
-        const categoryColumn = this.table.querySelectorAll("col")[1];
-        // show the categories column only when a category was filled in somewhere
-        // and it is not the only category
-        categoryColumn.removeAttribute("style");
-        return;
-      }
-    }
   }
 
   static getTemplateCategories (template) {
@@ -140,6 +113,8 @@ export class TemplatesPanel extends Panel {
   _addTemplate (pTemplateName, template) {
     const tr = Utils.createTr();
 
+    const menu = new DropDownMenu(tr, "smaller");
+
     tr.appendChild(Utils.createTd("name", pTemplateName));
 
     const categories = TemplatesPanel.getTemplateCategories(template);
@@ -151,6 +126,14 @@ export class TemplatesPanel extends Panel {
       categoryTd.className = "value-none";
     }
     tr.appendChild(categoryTd);
+
+    // calculate key
+    const key = template["key"];
+    if (key) {
+      tr.appendChild(Utils.createTd("", key));
+    } else {
+      tr.appendChild(Utils.createTd("value-none", "(none)"));
+    }
 
     // calculate description
     const description = template["description"];
@@ -185,7 +168,6 @@ export class TemplatesPanel extends Panel {
       tr.appendChild(Utils.createTd("command value-none", "(none)"));
     }
 
-    const menu = new DropDownMenu(tr, true);
     this._addMenuItemApplyTemplate(menu, targetType, target, command);
 
     const tbody = this.table.tBodies[0];

@@ -49,7 +49,7 @@ export class Issues {
 
     const theTr = Utils.createTr();
 
-    const menu = new DropDownMenu(theTr, true);
+    const menu = new DropDownMenu(theTr, "smaller");
     theTr.menu = menu;
 
     const descTd = Utils.createTd();
@@ -82,9 +82,9 @@ export class Issues {
     });
 
     if (pTr.hasClick !== true) {
-      pTr.addEventListener("click", (ClickEvent) => {
+      pTr.addEventListener("click", (pClickEvent) => {
         pTr.panel.runCommand("", pTarget, pCommand);
-        ClickEvent.stopPropagation();
+        pClickEvent.stopPropagation();
       });
     }
     pTr.hasClick = true;
@@ -98,14 +98,14 @@ export class Issues {
     } else {
       title = "Go to " + pPage + " page";
     }
-    pTr.menu.addMenuItem(title, () => {
-      pTr.panel.router.goTo(pPage, pArgs);
+    pTr.menu.addMenuItem(title, (pClickEvent) => {
+      pTr.panel.router.goTo(pPage, pArgs, undefined, pClickEvent);
     });
 
     if (pTr.hasClick !== true) {
-      pTr.addEventListener("click", (ClickEvent) => {
+      pTr.addEventListener("click", (pClickEvent) => {
         pTr.panel.router.goTo(pPage, pArgs);
-        ClickEvent.stopPropagation();
+        pClickEvent.stopPropagation();
       });
     }
     pTr.hasClick = true;

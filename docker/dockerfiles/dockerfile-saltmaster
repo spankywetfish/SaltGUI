@@ -1,34 +1,35 @@
-FROM ubuntu:20.04
+FROM ubuntu:24.04
 
 LABEL maintainer="Erwin Dondorp <saltgui@dondorp.com>"
 LABEL name=salt-master
 LABEL project="SaltGUI testing"
-LABEL version=3003
+LABEL version=3007.1
 
-ENV SALT_VERSION=3003
+ENV SALT_VERSION=3007.1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# fix ubuntu
-# see https://askubuntu.com/questions/1235914/hash-sum-mismatch-error-due-to-identical-sha1-and-md5-but-different-sha256
-RUN mkdir /etc/gcrypt && echo all >> /etc/gcrypt/hwf.deny
+# make download possible, make encrypted password generation possible
+RUN apt-get update
+RUN apt-get install --yes --no-install-recommends curl openssl adduser
 
-# add saltstack key and install dependencies
-RUN apt-get update \
-  && apt-get install curl net-tools gnupg2 dirmngr --yes --no-install-recommends \
-  && apt-key adv --fetch-keys http://repo.saltstack.com/py3/ubuntu/20.04/amd64/archive/${SALT_VERSION}/SALTSTACK-GPG-KEY.pub \
-  && echo "deb http://repo.saltstack.com/py3/ubuntu/20.04/amd64/archive/${SALT_VERSION} focal main" > /etc/apt/sources.list.d/saltstack.list \
-  # install salt-master and salt-api, dependencies
-  && apt-get update \
-  && apt-get install salt-master=${SALT_VERSION}* salt-api=${SALT_VERSION}* python3-cherrypy3 --yes --no-install-recommends \
-  # add a user for the frontend salt:salt
-  && useradd -m -s/bin/bash -p $(openssl passwd -1 salt) salt \
-  # install supervisor
-  && apt-get install supervisor --yes --no-install-recommends \
-  # show which versions are installed
-  && dpkg -l | grep salt- \
-  # cleanup temporary files
-  && rm -rf /var/lib/apt/lists/* \
-  && apt-get -y autoremove \
+# add a user for the frontend salt:salt
+RUN adduser salt
+RUN usermod -s /bin/bash -p "$(openssl passwd -1 salt)" salt
+
+# install salt-master with salt-api
+# not using repo, so must explicitly do all packages
+RUN curl -k -L -o salt-common_${SALT_VERSION}.deb https://packages.broadcom.com/artifactory/saltproject-deb/pool/salt-common_${SALT_VERSION}_amd64.deb
+RUN curl -k -L -o salt-api_${SALT_VERSION}.deb https://packages.broadcom.com/artifactory/saltproject-deb/pool/salt-api_${SALT_VERSION}_amd64.deb
+RUN curl -k -L -o salt-master_${SALT_VERSION}.deb https://packages.broadcom.com/artifactory/saltproject-deb/pool/salt-master_${SALT_VERSION}_amd64.deb
+RUN apt install --yes --no-install-recommends ./salt-common_${SALT_VERSION}.deb ./salt-master_${SALT_VERSION}.deb ./salt-api_${SALT_VERSION}.deb
+
+# install supervisor
+# becausewe need to run salt-master and salt-api
+RUN apt-get install --yes --no-install-recommends supervisor
+
+# cleanup temporary files
+RUN rm -rf /var/lib/apt/lists/* *.deb \
+  && apt-get --yes autoremove \
   && apt-get clean
 
 # copy supervisord configuration
@@ -39,4 +40,5 @@ VOLUME ["/pki", "/var/cache/salt", "/var/log/salt"]
 EXPOSE 3333 4505 4506
 
 # define main container command
-CMD /usr/bin/supervisord
+# explicitly mentioning the (default) configuration file saves a warning
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

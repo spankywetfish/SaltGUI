@@ -153,6 +153,9 @@ export class Panel {
   }
 
   setWarningText (pIcon = "", pTxt = "") {
+    if (!pTxt) {
+      pIcon = "";
+    }
     let newTxt;
     switch (pIcon) {
     case "info":
@@ -175,25 +178,6 @@ export class Panel {
 
   addTable (pColumnNames, pFieldList = null) {
     const table = Utils.createElem("table", this.key, "", this.key + "-table");
-
-    let anyHiddenColumns = false;
-    if (pColumnNames) {
-      for (const colName of pColumnNames) {
-        if (colName.startsWith("@")) {
-          anyHiddenColumns = true;
-        }
-      }
-    }
-
-    if (anyHiddenColumns) {
-      for (const colName of pColumnNames) {
-        const col = Utils.createElem("col");
-        if (colName.startsWith("@")) {
-          col.style.visibility = "collapse";
-        }
-        table.append(col);
-      }
-    }
 
     if (pColumnNames) {
       const thead = Utils.createElem("thead");
@@ -240,9 +224,35 @@ export class Panel {
     }
   }
 
-  setTableClickable () {
+  setTableClickable (pType) {
     // this function is only called when the table is clickable
+    // pType is "cmd" or "page"
     this.table.classList.add("highlight-rows");
+    if (!this.table.tHead) {
+      return;
+    }
+    const tr = this.table.tHead.children[0];
+    const nrColumns = tr.children.length;
+    const th = tr.children[nrColumns - 1];
+    const tableinfo = Utils.createSpan(
+      ["small-button", "small-button-right", "small-button-for-hover", "no-print"],
+      Character.BLACK_QUESTION_MARK_ORNAMENT);
+    tableinfo.style.minWidth = "inherit";
+    tableinfo.style.fontWeight = "normal";
+    tableinfo.style.padding = "0";
+    tableinfo.style.cursor = "help";
+    tableinfo.style.fontSize = "14px";
+    tableinfo.style.height = "inherit";
+    th.append(tableinfo);
+    switch (pType) {
+    case "cmd":
+      Utils.addToolTip (tableinfo, "Click row to show Manual Run for that row", "bottom-right");
+      break;
+    case "page":
+      Utils.addToolTip (tableinfo, "Click row to navigate to details page\nCTRL-click to open in a new tab and stay here\nALT-click to open in a new tab and go to it", "bottom-right");
+      break;
+    default:
+    }
   }
 
   setTableSortable (pColumnName, pDirection = "asc") {
@@ -382,12 +392,18 @@ export class Panel {
     minionTr.id = Utils.getIdFromMinionId(pMinionId);
     minionTr.dataset.minionId = pMinionId;
 
+    // drop down menu
+    const menuTd = Utils.createTd();
+    const menu = new DropDownMenu(menuTd, "smaller");
+    minionTr.dropdownmenu = menu;
+    minionTr.appendChild(menuTd);
+
     minionTr.appendChild(Utils.createTd("minion-id", pMinionId));
 
     const minionTd = Utils.createTd(["status", "accepted"], "accepted");
     minionTr.appendChild(minionTd);
 
-    minionTr.appendChild(Utils.createTd("os", "loading..."));
+    minionTr.appendChild(Utils.createTd("os", "loading" + Character.HORIZONTAL_ELLIPSIS));
 
     // fill out the number of columns to that of the header
     while (this.table.tHead.rows[0] && minionTr.cells.length < this.table.tHead.rows[0].cells.length - freeColumns) {
@@ -416,6 +432,12 @@ export class Panel {
       minionTr.removeChild(minionTr.firstChild);
     }
 
+    // drop down menu
+    const menuTd = Utils.createTd();
+    const menu = new DropDownMenu(menuTd, "smaller");
+    minionTr.dropdownmenu = menu;
+    minionTr.appendChild(menuTd);
+
     return minionTr;
   }
 
@@ -433,6 +455,20 @@ export class Panel {
     return cnt;
   }
 
+  static _filterIpAddresses (allIpNumbers, pIpNumberPrefix) {
+    if (pIpNumberPrefix.length > 0) {
+      allIpNumbers = allIpNumbers.filter((item) => {
+        for (const prefix of pIpNumberPrefix) {
+          if (item.startsWith(prefix)) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+    return allIpNumbers;
+  }
+
   static _getBestIpNumber (pMinionData, pAllMinionsGrains, pIpNumberField, pIpNumberPrefix) {
     if (!pMinionData) {
       return null;
@@ -447,7 +483,7 @@ export class Panel {
     // so, it is an array
 
     // reduce to only the requested prefix
-    allIpNumbers = allIpNumbers.filter((item) => item.startsWith(pIpNumberPrefix));
+    allIpNumbers = Panel._filterIpAddresses(allIpNumbers, pIpNumberPrefix);
 
     // sort it, so that we get more consistent results
     // when there are minions which report multiple IP
@@ -497,7 +533,7 @@ export class Panel {
     }
 
     // reduce to only the requested prefix
-    allIpNumbers = allIpNumbers.filter((item) => item.startsWith(pIpNumberPrefix));
+    allIpNumbers = Panel._filterIpAddresses(allIpNumbers, pIpNumberPrefix);
 
     return allIpNumbers;
   }
@@ -571,13 +607,16 @@ export class Panel {
 
     const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId));
 
-    minionTr.appendChild(Utils.createTd("minion-id", pMinionId));
+    const minionSpan = Utils.createSpan("minion-id", pMinionId);
+    const minionTd = Utils.createTd();
+    minionTd.append(minionSpan);
+    minionTr.appendChild(minionTd);
 
     // which grain to use for IP-number display
     // typical choices are "fqdn_ip4", "ipv4", "fqdn_ip6" or "ipv6"
     // non-existent grains effectively disable the behaviour
     const ipNumberField = Utils.getStorageItem("session", "ipnumber_field", "fqdn_ip4");
-    const ipNumberPrefix = Utils.getStorageItem("session", "ipnumber_prefix", "");
+    const ipNumberPrefix = Utils.getStorageItemList("session", "ipnumber_prefix");
 
     const bestIpNumber = Panel._getBestIpNumber(pMinionData, pAllMinionsGrains, ipNumberField, ipNumberPrefix);
     const allIpNumbers = Panel._getAllIpNumbers(pMinionData, ipNumberField, ipNumberPrefix);
@@ -611,6 +650,14 @@ export class Panel {
     } else {
       const accepted = Utils.createTd(["status", "accepted"], "accepted");
       minionTr.appendChild(accepted);
+    }
+
+    if (minionTr.dataset.isConnected === "false") {
+      Panel.addPrefixIcon(minionSpan, Character.WARNING_SIGN);
+      Utils.addToolTip(
+        minionSpan,
+        "This minion is currently not connected",
+        "bottom-left");
     }
 
     minionTr.dataset.minionId = pMinionId;
@@ -675,6 +722,7 @@ export class Panel {
       const minionInfo = minions[minionId];
 
       // minions can be offline, then the info will be false
+      // for grains/pillar we may receive data anyway when using cached data
       if (minionInfo === false) {
         this.updateOfflineMinion(minionId, minionsDict);
         this.nrOffline += 1;
@@ -833,7 +881,7 @@ export class Panel {
   }
 
   clearPanel () {
-    if (this.title && this.originalTitle.includes("...")) {
+    if (this.title && this.originalTitle.includes(Character.HORIZONTAL_ELLIPSIS)) {
       this.title.innerText = this.originalTitle;
     }
     if (this.table) {
@@ -875,6 +923,44 @@ export class Panel {
     }
     if (!pElem.innerText.startsWith(pIconChar)) {
       pElem.innerText = pIconChar + pElem.innerText;
+    }
+  }
+
+  hideColumn (colTitle) {
+
+    let colNr = -1;
+    // find a column with this name
+    for (let i = 0; i < this.table.tHead.children[0].children.length; i++) {
+      const td = this.table.tHead.children[0].children[i];
+      if (td.innerText === colTitle) {
+        colNr = i;
+        break;
+      }
+    }
+    if (colNr < 0) {
+      // column by that name already gone
+      return;
+    }
+
+    for (const tr of this.table.tBodies[0].children) {
+      const td = tr.children[colNr];
+      if (!td.classList.contains("value-none")) {
+        // column has an interesting value on this row
+        // do not hide the column
+        return;
+      }
+    }
+
+    // all column-values are trivial, remove the column
+    // title
+    for (const tr of this.table.tHead.children) {
+      const td = tr.children[colNr];
+      td.remove();
+    }
+    // data
+    for (const tr of this.table.tBodies[0].children) {
+      const td = tr.children[colNr];
+      td.remove();
     }
   }
 }

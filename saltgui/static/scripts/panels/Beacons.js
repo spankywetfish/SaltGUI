@@ -1,6 +1,5 @@
 /* global */
 
-import {DropDownMenu} from "../DropDown.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
 
@@ -11,9 +10,9 @@ export class BeaconsPanel extends Panel {
 
     this.addTitle("Beacons");
     this.addSearchButton();
-    this.addTable(["Minion", "Status", "Beacons", "-menu-"]);
+    this.addTable(["-menu-", "Minion", "Status", "Beacons"]);
     this.setTableSortable("Minion", "asc");
-    this.setTableClickable();
+    this.setTableClickable("page");
     this.addMsg();
   }
 
@@ -90,14 +89,13 @@ export class BeaconsPanel extends Panel {
 
     const minionIds = keys.minions.sort();
     for (const minionId of minionIds) {
-      const minionTr = this.addMinion(minionId, 1);
+      const minionTr = this.addMinion(minionId);
 
       // preliminary dropdown menu
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemShowBeacons(menu, minionId);
+      this._addMenuItemShowBeacons(minionTr.dropdownmenu, minionId);
 
       minionTr.addEventListener("click", (pClickEvent) => {
-        this.router.goTo("beacons-minion", {"minionid": minionId});
+        this.router.goTo("beacons-minion", {"minionid": minionId}, undefined, pClickEvent);
         pClickEvent.stopPropagation();
       });
     }
@@ -112,7 +110,6 @@ export class BeaconsPanel extends Panel {
 
     // force same columns on all rows
     minionTr.appendChild(Utils.createTd("beaconinfo"));
-    minionTr.appendChild(Utils.createTd("run-command-button"));
   }
 
   updateMinion (pMinionData, pMinionId, pAllMinionsGrains) {
@@ -139,13 +136,12 @@ export class BeaconsPanel extends Panel {
       minionTr.appendChild(beaconInfoTd);
     }
 
-    const menu = new DropDownMenu(minionTr, true);
-    this._addMenuItemShowBeacons(menu, pMinionId);
+    this._addMenuItemShowBeacons(minionTr.dropdownmenu, pMinionId);
   }
 
   _addMenuItemShowBeacons (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show beacons", () => {
-      this.router.goTo("beacons-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show beacons", (pClickEvent) => {
+      this.router.goTo("beacons-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 }

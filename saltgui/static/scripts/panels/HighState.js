@@ -1,7 +1,6 @@
 /* global */
 
 import {Character} from "../Character.js";
-import {DropDownMenu} from "../DropDown.js";
 import {JobPanel} from "./Job.js";
 import {JobsPanel} from "./Jobs.js";
 import {Output} from "../output/Output.js";
@@ -9,16 +8,16 @@ import {Panel} from "./Panel.js";
 import {TargetType} from "../TargetType.js";
 import {Utils} from "../Utils.js";
 
-// only consider this number of latest highstate jobs
-const MAX_HIGHSTATE_JOBS = 10;
-
-// more than this number of states switches to summary
-const MAX_HIGHSTATE_STATES = 20;
 
 export class HighStatePanel extends Panel {
 
   constructor () {
     super("highstate");
+
+    // only consider this number of latest highstate jobs
+    this._maxShowHighstates = Utils.getStorageItem("session", "max_show_highstates", 10);
+    // more than this number of states switches to summary
+    this._maxHighstateStates = Utils.getStorageItem("session", "max_highstate_states", 20);
 
     this.addTitle("HighState");
     this.addPanelMenu();
@@ -31,14 +30,14 @@ export class HighStatePanel extends Panel {
     this.addPlayPauseButton();
     this.addHelpButton([
       "This panel shows the latest state.highstate or state.apply job for each minion.",
-      "Only the latest " + MAX_HIGHSTATE_JOBS + " jobs are verified.",
-      "With more than " + MAX_HIGHSTATE_STATES + " states, a summary is shown instead.",
+      "Only the latest " + this._maxShowHighstates + " jobs are verified.",
+      "With more than " + this._maxHighstateStates + " states, a summary is shown instead.",
       "Click on an individual state to re-apply only that state."
     ]);
     this.addWarningField();
-    this.addTable(["Minion", "State", "Latest JID", "Target", "Function", "Start Time", "-menu-", "States"]);
+    this.addTable(["-menu-", "Minion", "State", "Latest JID", "Target", "Function", "Start Time", "States"]);
     this.setTableSortable("Minion", "asc");
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
 
     // collect the list of hidden/shown environments
@@ -63,7 +62,7 @@ export class HighStatePanel extends Panel {
 
     // remove the previous warning, if any
     // and show this while loading more info
-    super.setWarningText("info", "loading...");
+    super.setWarningText("info", "loading" + Character.HORIZONTAL_ELLIPSIS);
 
     wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
       this._handleMinionsWheelKeyListAll(pWheelKeyListAllData);
@@ -84,6 +83,14 @@ export class HighStatePanel extends Panel {
       Utils.ignorePromise(runnerJobsListJobsPromise);
       return false;
     });
+  }
+
+  onHide () {
+    if (this.nextJobTimeout) {
+      // stop the timer when nobody is looking
+      window.clearTimeout(this.nextJobTimeout);
+      this.nextJobTimeout = null;
+    }
   }
 
   _addMenuItemStateApply (pMenu, pMinionId) {
@@ -138,14 +145,11 @@ export class HighStatePanel extends Panel {
     this.nrUnaccepted = keys.minions_pre.length;
 
     for (const minionId of minionIds) {
-      const minionTr = this.addMinion(minionId, 2);
+      const minionTr = this.addMinion(minionId);
 
       // preliminary dropdown menu
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemStateApply(menu, minionId);
-      this._addMenuItemStateApplyTest(menu, minionId);
-
-      minionTr.appendChild(Utils.createTd());
+      this._addMenuItemStateApply(minionTr.dropdownmenu, minionId);
+      this._addMenuItemStateApplyTest(minionTr.dropdownmenu, minionId);
 
       minionTr.addEventListener("click", (pClickEvent) => {
         const functionField = minionTr.querySelector(".function");
@@ -177,8 +181,8 @@ export class HighStatePanel extends Panel {
     let jobs = JobsPanel._jobsToArray(pData.return[0]);
     JobsPanel._sortJobs(jobs);
 
-    if (jobs.length > MAX_HIGHSTATE_JOBS) {
-      jobs = jobs.slice(0, MAX_HIGHSTATE_JOBS);
+    if (jobs.length > this._maxShowHighstates) {
+      jobs = jobs.slice(0, this._maxShowHighstates);
     }
 
     this.jobs = jobs;
@@ -209,7 +213,8 @@ export class HighStatePanel extends Panel {
       this._handleJob(job);
     }
 
-    window.setTimeout(() => {
+    this.nextJobTimeout = window.setTimeout(() => {
+      this.nextJobTimeout = null;
       this._updateNextJob();
     }, 1000);
   }
@@ -268,10 +273,10 @@ export class HighStatePanel extends Panel {
       super.setWarningText("info", "no jobs were found");
     } else if (this.jobsCnt === 1) {
       super.setWarningText("info", "only 1 job was found and some minions did not have results in that job");
-    } else if (this.jobsCnt < MAX_HIGHSTATE_JOBS) {
+    } else if (this.jobsCnt < this._maxShowHighstates) {
       super.setWarningText("info", "only " + this.jobsCnt + " jobs were found and some minions did not have results in any of these jobs");
     } else {
-      super.setWarningText("info", "the latest " + MAX_HIGHSTATE_JOBS + " jobs were inspected and some minions did not have results in any of these jobs");
+      super.setWarningText("info", "the latest " + this._maxShowHighstates + " jobs were inspected and some minions did not have results in any of these jobs");
     }
   }
 
@@ -370,7 +375,7 @@ export class HighStatePanel extends Panel {
       const jobIdTd = Utils.createTd();
       const jobIdSpan = Utils.createSpan("tooltip", pJobId);
       jobIdSpan.addEventListener("click", (pClickEvent) => {
-        this.router.goTo("job", {"id": pJobId, "minionid": minionId});
+        this.router.goTo("job", {"id": pJobId, "minionid": minionId}, undefined, pClickEvent);
         pClickEvent.stopPropagation();
       });
       jobIdTd.appendChild(jobIdSpan);
@@ -380,7 +385,7 @@ export class HighStatePanel extends Panel {
       const maxTextLength = 50;
       if (targetText.length > maxTextLength) {
         // prevent column becoming too wide
-        targetText = targetText.substring(0, maxTextLength) + "...";
+        targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
       }
       minionTr.appendChild(Utils.createTd("target", targetText));
 
@@ -388,7 +393,7 @@ export class HighStatePanel extends Panel {
       let functionText = jobData.Function + argumentsText;
       if (functionText.length > maxTextLength) {
         // prevent column becoming too wide
-        functionText = functionText.substring(0, maxTextLength) + "...";
+        functionText = functionText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
       }
       const functionField = Utils.createTd("function", functionText);
       functionField.cmd = jobData.Function + argumentsText;
@@ -402,10 +407,9 @@ export class HighStatePanel extends Panel {
       startTimeTd.appendChild(startTimeSpan);
       minionTr.appendChild(startTimeTd);
 
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemStateApply(menu, minionId);
-      this._addMenuItemStateApplyTest(menu, minionId);
-      this._addJobsMenuItemShowDetails(menu, jobData, minionId);
+      this._addMenuItemStateApply(minionTr.dropdownmenu, minionId);
+      this._addMenuItemStateApplyTest(minionTr.dropdownmenu, minionId);
+      this._addJobsMenuItemShowDetails(minionTr.dropdownmenu, jobData, minionId);
 
       const minionResult = jobData.Result[minionId];
       const tasksTd = Utils.createTd("tasks");
@@ -430,10 +434,10 @@ export class HighStatePanel extends Panel {
         data.___key___ = key;
 
         // always create the span for the state
-        // we may use it for presentation (keys.length <= MAX_HIGHSTATE_STATES); or
-        // for information (keys.length > MAX_HIGHSTATE_STATES)
+        // we may use it for presentation (keys.length <= this._maxHighstateStates); or
+        // for information (keys.length > this._maxHighstateStates)
 
-        const span = Utils.createSpan("task", Character.BLACK_CIRCLE);
+        const span = Utils.createSpan("task");
         span.style.backgroundColor = "black";
 
         // this also sets the span's class(es)
@@ -442,32 +446,39 @@ export class HighStatePanel extends Panel {
         // add class here again, because it gets lost in _setTaskToolTip
         span.classList.add("task");
 
-        if (keys.length > MAX_HIGHSTATE_STATES) {
-          let statKey = "";
-          let prio = 0;
+        if (keys.length > this._maxHighstateStates) {
+          const taskClass = Output.getTaskClass(data);
+          const taskChar = Output.getTaskCharacter(data);
 
-          // statkeys are sortable on their priority
-          if (span.classList.contains("task-skipped")) {
-            statKey = "task-skipped";
-            prio = 31;
-          } else if (span.classList.contains("task-success")) {
-            statKey = "task-success";
-            prio = 41;
-          } else if (span.classList.contains("task-failure")) {
-            statKey = "task-failure";
-            prio = 21;
-          } else {
-            statKey = "task-unknown";
-            prio = 11;
-          }
+          // priority must always be a 2-digit value (i.e. 10..99)
+          let priority;
 
-          if (span.classList.contains("task-changes")) {
-            prio -= 1;
-            statKey += " task-changes";
+          // taskClass is to be sorted on its priority (low to high)
+          switch (taskClass) {
+          case "task-success":
+            priority = 41;
+            break;
+          case "task-success-changes":
+            priority = 40;
+            break;
+          case "task-skipped":
+            priority = 31;
+            break;
+          case "task-skipped-changes":
+            priority = 30;
+            break;
+          case "task-failure":
+            priority = 21;
+            break;
+          case "task-failure-changes":
+            priority = 20;
+            break;
+          default:
+            priority = 11;
           }
 
           // allow keys to be sortable
-          statKey = prio + statKey;
+          const statKey = priority + taskClass + taskChar;
 
           if (statKey in stats) {
             stats[statKey] += 1;
@@ -495,20 +506,22 @@ export class HighStatePanel extends Panel {
 
         // show the summary when one was build up
         for (const statKey of Object.keys(stats).sort()) {
+          const character = statKey.substring(statKey.length - 1);
+          const className = statKey.substring(2, statKey.length - 1);
           const sepSpan = Utils.createSpan("", sep + stats[statKey] + Character.MULTIPLICATION_SIGN);
           summarySpan.append(sepSpan);
           sep = " ";
 
           // remove the priority indicator from the key
-          const itemSpan = Utils.createSpan(["tasksummary", "taskcircle"], Character.BLACK_CIRCLE);
-          itemSpan.classList.add(...statKey.substring(2).split(" "));
+          const itemSpan = Utils.createSpan(["tasksummary", className], character);
           itemSpan.style.backgroundColor = "black";
           summarySpan.append(itemSpan);
+          Utils.addToolTip(itemSpan, className.replace("task-", "").replace("-", " with "));
         }
 
         // allow similar navigation, but just only to the job level
         summarySpan.addEventListener("click", (pClickEvent) => {
-          this.router.goTo("job", {"id": pJobId, "minionid": minionId});
+          this.router.goTo("job", {"id": pJobId, "minionid": minionId}, undefined, pClickEvent);
           pClickEvent.stopPropagation();
         });
 
@@ -522,8 +535,8 @@ export class HighStatePanel extends Panel {
   }
 
   _addJobsMenuItemShowDetails (pMenu, pJob, pMinionId) {
-    pMenu.addMenuItem("Show details", () => {
-      this.router.goTo("job", {"id": pJob.jid, "minionid": pMinionId});
+    pMenu.addMenuItem("Show details", (pClickEvent) => {
+      this.router.goTo("job", {"id": pJob.jid, "minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 }

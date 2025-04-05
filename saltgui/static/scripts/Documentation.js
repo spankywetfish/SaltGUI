@@ -30,7 +30,7 @@ export class Documentation {
       () => Documentation._manualRunMenuCustomHelpPrepare(),
       () => Documentation._manualRunMenuCustomHelpRun());
 
-    Documentation.DOCUMENTATION_URL = "https://docs.saltstack.com/en/latest/ref/";
+    Documentation.DOCUMENTATION_URL = "https://docs.saltproject.io/en/latest/ref/";
     Documentation.EXTERNAL_LINK = Character.NO_BREAK_SPACE + Character.EXTERNAL_LINK_IMG;
 
     Documentation.PROVIDERS = { };
@@ -79,7 +79,7 @@ export class Documentation {
       return "Run 'runners.doc.wheel" + arg + "'";
     }
 
-    return "Run 'sys.doc " + arg + "' on " + target;
+    return "Run 'sys.doc" + arg + "' on " + target;
   }
 
   _manualRunMenuSysDocRun () {
@@ -102,7 +102,7 @@ export class Documentation {
     const cmd = ParseCommandLine.getCommandFromCommandLine(commandLine);
 
     button.disabled = true;
-    output.innerText = "loading...";
+    output.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
 
     let docCommand;
     let dummyCommand;
@@ -291,6 +291,12 @@ export class Documentation {
       if (Object.keys(Documentation.PROVIDERS).length === 0) {
         html += "<p>The documentation index has not been retrieved yet. We'll just assume this is a regular command.</p>";
         concreteModules = [cmd[1]];
+      } else if ("SKIPPED" in Documentation.PROVIDERS) {
+        html += "<p>The documentation index is skipped on this system. We'll just assume this is a regular command.</p>";
+        concreteModules = [cmd[1]];
+      } else if ("ERROR" in Documentation.PROVIDERS) {
+        html += "<p>The documentation index could not be retrieved. We'll just assume this is a regular command.</p>";
+        concreteModules = [cmd[1]];
       }
 
       switch (concreteModules.length) {
@@ -311,7 +317,7 @@ export class Documentation {
       }
     }
 
-    // See https://docs.saltstack.com/en/latest/ref/modules/all/index.html
+    // See https://docs.saltproject.io/en/latest/ref/modules/all/index.html
     const knownVirtualModules = [
       "group",
       "kernelpkg",
@@ -416,7 +422,7 @@ export class Documentation {
 
   static _manualRunMenuBeaconNamePrepare () {
     const commandLine = document.querySelector(".run-command #command").value;
-    if (!commandLine.startsWith("beacons.add ")) {
+    if (commandLine !== "beacons.add" && !commandLine.startsWith("beacons.add ")) {
       return null;
     }
     return "List standard beacon names";

@@ -336,6 +336,80 @@ export class Output {
     return false;
   }
 
+  static getTaskNrChanges (pTask) {
+    if (!pTask.changes) {
+      return 0;
+    }
+    if (typeof pTask.changes !== "object") {
+      return 1;
+    }
+    if (Array.isArray(pTask.changes)) {
+      return pTask.changes.length;
+    }
+    if (Object.keys(pTask.changes).length === 0) {
+      // empty changes object does not count as real change
+      return 0;
+    }
+    return 1;
+  }
+
+  static getTaskCharacter (pTask) {
+    if (!pTask.changes) {
+      return Character.BLACK_CIRCLE;
+    }
+    if (typeof pTask.changes !== "object") {
+      return Character.BLACK_DIAMOND;
+    }
+    if (Array.isArray(pTask.changes)) {
+      return pTask.changes.length === 0 ? Character.BLACK_CIRCLE : Character.BLACK_DIAMOND;
+    }
+    if (Object.keys(pTask.changes).length === 0) {
+      // empty changes object does not count as real change
+      return Character.BLACK_CIRCLE;
+    }
+    return Character.BLACK_DIAMOND;
+  }
+
+  static _getTaskChanges (pTask) {
+    if (!pTask.changes) {
+      return "";
+    }
+    if (typeof pTask.changes !== "object") {
+      return "\n'changes' has type " + typeof pTask.changes;
+    }
+    if (Array.isArray(pTask.changes)) {
+      const nrChanges = pTask.changes.length;
+      return Utils.txtZeroOneMany(
+        nrChanges,
+        "\n'changes' is an empty array",
+        "\n'changes' is an array\n" + nrChanges + " change",
+        "\n'changes' is an array\n" + nrChanges + " changes");
+    }
+    if (Object.keys(pTask.changes).length === 0) {
+      // empty changes object does not count as real change
+      return "";
+    }
+    return "\nchanged";
+  }
+
+  static getTaskClass (pTask) {
+    let className;
+
+    if (pTask.result === null) {
+      className = "task-skipped";
+    } else if (pTask.result === false) {
+      className = "task-failure";
+    } else {
+      className = "task-success";
+    }
+
+    if (Output.getTaskNrChanges(pTask) > 0) {
+      className += "-changes";
+    }
+
+    return className;
+  }
+
   static _setTaskToolTip (pSpan, pTask) {
 
     if (typeof pTask !== "object") {
@@ -344,7 +418,7 @@ export class Output {
 
     let txt = "";
 
-    if ("__sls__" in pTask) {
+    if ("__sls__" in pTask && pTask.__sls__) {
       txt += "\n" + pTask.__sls__.replace(/[.]/g, "/") + ".sls";
     }
 
@@ -362,39 +436,15 @@ export class Output {
       txt += "\n" + functionName;
     }
 
-    let nrChanges;
-    if (!pTask.changes) {
-      nrChanges = 0;
-    } else if (typeof pTask.changes !== "object") {
-      nrChanges = 1;
-      txt += "\n'changes' has type " + typeof pTask.changes;
-    } else if (Array.isArray(pTask.changes)) {
-      nrChanges = pTask.changes.length;
-      txt += "\n'changes' is an array";
-      txt += Utils.txtZeroOneMany(nrChanges, "", "\n" + nrChanges + " change", "\n" + nrChanges + " changes");
-    } else if (typeof pTask.changes === "object" && Object.keys(pTask.changes).length === 0) {
-      // empty changes object does not count as real change
-      nrChanges = 0;
-    } else {
-      nrChanges = 1;
-      txt += "\nchanged";
-    }
+    txt += Output._getTaskChanges(pTask);
 
     if (Output.isHiddenTask(pTask)) {
       txt += "\nhidden";
     }
 
     pSpan.className = "taskcircle";
-    if (pTask.result === null) {
-      pSpan.classList.add("task-skipped");
-    } else if (pTask.result) {
-      pSpan.classList.add("task-success");
-    } else {
-      pSpan.classList.add("task-failure");
-    }
-    if (nrChanges) {
-      pSpan.classList.add("task-changes");
-    }
+    pSpan.classList.add(Output.getTaskClass(pTask));
+    pSpan.innerText = Output.getTaskCharacter(pTask);
 
     for (const key in pTask) {
       /* eslint-disable curly */
@@ -615,7 +665,7 @@ export class Output {
 
   // the orchestrator for the output
   // determines what format should be used and uses that
-  static addResponseOutput (pOutputContainer, pJobId, pMinionData, pResponse, pCommand, pInitialStatus, pHighlightMinionId, pArguments) {
+  static addResponseOutput (pOutputContainer, pJobId, pMinionData, pResponse, pCommand, pInitialStatus, pHighlightMinionId, pExtraInfo) {
 
     // remove old content
     pOutputContainer.innerText = "";
@@ -635,8 +685,9 @@ export class Output {
     }
 
     // it might be documentation
+    const commandCmd = pCommand.trim().replace(/ .*/, "");
     const commandArg = pCommand.trim().replace(/^[a-z.]* */i, "");
-    const isDocumentationOutput = OutputDocumentation.isDocumentationOutput(pResponse, commandArg);
+    const isDocumentationOutput = OutputDocumentation.isDocumentationOutput(pResponse, commandCmd, commandArg);
     if (isDocumentationOutput) {
       OutputDocumentation.reduceDocumentationOutput(pResponse, commandArg, commandArg);
       OutputDocumentation.addDocumentationOutput(pOutputContainer, pResponse);
@@ -737,10 +788,12 @@ export class Output {
       topSummaryDiv.appendChild(summaryJobsListJobSpan);
     }
 
-    if (pArguments) {
-      const div = Utils.createDiv("", pArguments);
-      div.style.lineBreak = "anywhere";
-      pOutputContainer.appendChild(div);
+    if (pExtraInfo) {
+      for (const str of pExtraInfo) {
+        const div = Utils.createDiv("", str);
+        div.style.lineBreak = "anywhere";
+        pOutputContainer.appendChild(div);
+      }
     }
 
     const masterTriangle = Utils.createSpan();
@@ -841,8 +894,6 @@ export class Output {
     downloadLabel.style = "float:right";
     topSummaryDiv.appendChild(downloadLabel);
 
-    const commandCmd = pCommand.trim().replace(/ .*/, "");
-
     if (Output._hasStartTimeField(pResponse)) {
       const span = Utils.createDiv("", "\n" + Character.CIRCLED_INFORMATION_SOURCE + " start-time of tasks is using local-time from the minion");
       topSummaryDiv.append(span);
@@ -853,6 +904,13 @@ export class Output {
     for (const minionId of [...pMinionData].sort()) {
 
       let minionResponse = pResponse[minionId];
+
+      if (commandCmd === "runner.state.orchestrate" && minionResponse.return && minionResponse.return.return && minionResponse.return.return.data) {
+        minionResponse = minionResponse.return.return.data[minionId];
+      }
+      if (commandCmd === "runner.state.orchestrate_single" && minionResponse.return && minionResponse.return.return && typeof minionResponse.return.return === "object") {
+        minionResponse = Object.values(minionResponse.return.return)[0];
+      }
 
       const isSuccess = Output._getIsSuccess(minionResponse);
       minionResponse = Output._getMinionResponse(pCommand, minionResponse);
@@ -908,8 +966,10 @@ export class Output {
         // first put all the values in an array
         Object.keys(minionResponse).forEach(
           (taskKey) => {
-            minionResponse[taskKey].___key___ = taskKey;
-            tasks.push(minionResponse[taskKey]);
+            if (typeof minionResponse[taskKey] === "object") {
+              minionResponse[taskKey].___key___ = taskKey;
+              tasks.push(minionResponse[taskKey]);
+            }
           }
         );
         // then sort the array

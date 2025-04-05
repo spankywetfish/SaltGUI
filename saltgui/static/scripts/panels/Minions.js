@@ -1,7 +1,6 @@
 /* global */
 
 import {Character} from "../Character.js";
-import {DropDownMenu} from "../DropDown.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
 
@@ -22,18 +21,23 @@ export class MinionsPanel extends Panel {
     this._addMenuItemStateApply(this.panelMenu, "*");
     this._addMenuItemStateApplyTest(this.panelMenu, "*");
     this.addSearchButton();
-    this.addTable(["Minion", "Status", "Salt version", "OS version", "-menu-"]);
+    this.addWarningField();
+    this.addTable(["-menu-", "Minion", "Status", "Salt version", "OS version"]);
     this.setTableSortable("Minion", "asc");
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
   }
 
   onShow () {
     this.nrMinions = 0;
 
+    const useCacheGrains = Utils.getStorageItemBoolean("session", "use_cache_for_grains", false);
+    this.setWarningText("info", useCacheGrains ? "the content of this screen is based on cached grains info, minion status or grain info may not be accurate" : "");
+
     const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
     const wheelMinionsConnectedPromise = this.api.getWheelMinionsConnected();
-    const localGrainsItemsPromise = this.api.getLocalGrainsItems(null);
+    const localGrainsItemsPromise = useCacheGrains ? this.api.getRunnerCacheGrains(null) : this.api.getLocalGrainsItems(null);
+
     const runnerManageVersionsPromise = this.api.getRunnerManageVersions();
 
     this.loadMinionsTxt();
@@ -86,16 +90,15 @@ export class MinionsPanel extends Panel {
 
     const minionIds = keys.minions.sort();
     for (const minionId of minionIds) {
-      const minionTr = this.addMinion(minionId, 1);
+      const minionTr = this.addMinion(minionId);
 
       // preliminary dropdown menu
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemStateApply(menu, minionId);
-      this._addMenuItemStateApplyTest(menu, minionId);
-      this._addMenuItemShowGrains(menu, minionId);
-      this._addMenuItemShowPillars(menu, minionId);
-      this._addMenuItemShowSchedules(menu, minionId);
-      this._addMenuItemShowBeacons(menu, minionId);
+      this._addMenuItemStateApply(minionTr.dropdownmenu, minionId);
+      this._addMenuItemStateApplyTest(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowGrains(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowPillars(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowSchedules(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowBeacons(minionTr.dropdownmenu, minionId);
     }
 
     this.updateFooter();
@@ -152,7 +155,9 @@ export class MinionsPanel extends Panel {
     const minionIds = pWheelMinionsConnectedData.return[0].data.return;
 
     for (const tr of this.table.tBodies[0].childNodes) {
-      if (minionIds.indexOf(tr.dataset.minionId) >= 0) {
+      tr.dataset.isConnected = minionIds.indexOf(tr.dataset.minionId) >= 0;
+
+      if (tr.dataset.isConnected) {
         // skip the connected minions
         continue;
       }
@@ -176,20 +181,18 @@ export class MinionsPanel extends Panel {
     // force same columns on all rows
     minionTr.appendChild(Utils.createTd("saltversion"));
     minionTr.appendChild(Utils.createTd("os"));
-    minionTr.appendChild(Utils.createTd("run-command-button"));
   }
 
   updateMinion (pMinionData, pMinionId, pAllMinionsGrains) {
     super.updateMinion(pMinionData, pMinionId, pAllMinionsGrains);
 
     const minionTr = this.table.querySelector("#" + Utils.getIdFromMinionId(pMinionId));
-    const menu = new DropDownMenu(minionTr, true);
-    this._addMenuItemStateApply(menu, pMinionId);
-    this._addMenuItemStateApplyTest(menu, pMinionId);
-    this._addMenuItemShowGrains(menu, pMinionId);
-    this._addMenuItemShowPillars(menu, pMinionId);
-    this._addMenuItemShowSchedules(menu, pMinionId);
-    this._addMenuItemShowBeacons(menu, pMinionId);
+    this._addMenuItemStateApply(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemStateApplyTest(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowGrains(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowPillars(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowSchedules(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowBeacons(minionTr.dropdownmenu, pMinionId);
 
     minionTr.addEventListener("click", (pClickEvent) => {
       const cmdArr = ["state.apply"];
@@ -213,31 +216,31 @@ export class MinionsPanel extends Panel {
   }
 
   _addMenuItemShowGrains (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show grains", () => {
-      this.router.goTo("grains-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show grains", (pClickEvent) => {
+      this.router.goTo("grains-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 
   _addMenuItemShowSchedules (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show schedules", () => {
-      this.router.goTo("schedules-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show schedules", (pClickEvent) => {
+      this.router.goTo("schedules-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 
   _addMenuItemShowPillars (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show pillars", () => {
-      this.router.goTo("pillars-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show pillars", (pClickEvent) => {
+      this.router.goTo("pillars-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 
   _addMenuItemShowBeacons (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show beacons", () => {
-      this.router.goTo("beacons-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show beacons", (pClickEvent) => {
+      this.router.goTo("beacons-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 
   static _getCveData () {
-    // See https://docs.saltstack.com/en/master/topics/releases/version_numbers.html
+    // See https://docs.saltproject.io/en/master/topics/releases/version_numbers.html
     // See https://cve.mitre.org/cve/search_cve_list.html
     // See e.g. https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-11652
     // We do not distinguish between different tools like master/minion/api
@@ -517,10 +520,33 @@ export class MinionsPanel extends Panel {
       ["CVE-2022-22967", MASTER, ["300[01]"]],
       ["CVE-2022-22967", MASTER, ["3002", "[0-8]"]],
       ["CVE-2022-22967", MASTER, ["3003", "[0-4]"]],
-      ["CVE-2022-22967", MASTER, ["3004", "[0-1]"]]
+      ["CVE-2022-22967", MASTER, ["3004", "[0-1]"]],
+
+      // unclear for which older saltstack versions also
+      // but e.g. CVE-2024-22231 already warns for several older ones anyway
+      ["CVE-2023-50782", MASTER + MINION, ["3006", "[67]"]],
+
+      // unclear for which older saltstack versions also
+      ["CVE-2024-0727", MASTER + MINION, ["3006", "7"]],
+      ["CVE-2024-3772", MASTER + MINION, ["3007", "0"]],
+
+      ["CVE-2024-22231", MASTER + MINION, ["2"]],
+      ["CVE-2024-22231", MASTER + MINION, ["300[0-4]"]],
+      ["CVE-2024-22231", MASTER + MINION, ["3005", "[0-4]"]],
+      ["CVE-2024-22231", MASTER + MINION, ["3006", "[0-5]"]],
+
+      ["CVE-2024-22232", MASTER + MINION, ["2"]],
+      ["CVE-2024-22232", MASTER + MINION, ["300[0-4]"]],
+      ["CVE-2024-22232", MASTER + MINION, ["3005", "[0-4]"]],
+      ["CVE-2024-22232", MASTER + MINION, ["3006", "[0-5]"]],
+
+      // unclear for which older saltstack versions also
+      ["CVE-2024-26130", MASTER + MINION, ["3006", "7"]],
+      ["CVE-2024-27306", MASTER + MINION, ["3006", "7"]],
+      ["CVE-2024-34064", MASTER + MINION, ["3007", "0"]],
     ];
 
-    // the above table is up-to-date until (including) 3006.1
+    // the above table is up-to-date until (including) 3006.8 and 3007.1
   }
 
   static _getCveBugs (pVersion, pNodeType) {
@@ -585,7 +611,7 @@ export class MinionsPanel extends Panel {
     if (!Object.keys(pBugs).length) {
       return txt;
     }
-    txt += "\nThe " + pName + " has version " + pVersion + " and is VULNERABLE\nfor exploit";
+    txt += "\n" + Character.WARNING_SIGN + pName + " has version " + pVersion + " and is VULNERABLE\nfor exploit";
     const bugs = Object.keys(pBugs).sort();
     if (bugs.length > 1) {
       txt += "s";
@@ -663,13 +689,13 @@ export class MinionsPanel extends Panel {
 
         const allCveKeys = Object.keys(masterBugs);
         let txt = "";
-        txt += MinionsPanel._addCveList("salt-master", masterVersion, masterBugs, allCveKeys);
-        txt += MinionsPanel._addCveList("salt-minion", minionVersion, minionBugs, allCveKeys);
+        txt += MinionsPanel._addCveList("The salt-master", masterVersion, masterBugs, allCveKeys);
+        txt += MinionsPanel._addCveList("This salt-minion", minionVersion, minionBugs, allCveKeys);
 
         if (outcome === "Minion requires update") {
-          txt += "\nThis salt-minion (" + minionVersion + ") is older than the salt-master (" + masterVersion + ")";
+          txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + minionVersion + ") is older than the salt-master (" + masterVersion + ")";
         } else if (outcome === "Minion newer than master") {
-          txt += "\nThis salt-minion (" + minionVersion + ") is newer than the salt-master (" + masterVersion + ")";
+          txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + minionVersion + ") is newer than the salt-master (" + masterVersion + ")";
         }
 
         if (txt) {

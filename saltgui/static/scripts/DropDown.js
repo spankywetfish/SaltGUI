@@ -24,7 +24,7 @@ export class DropDownMenu {
 
   // Creates an empty dropdown menu
   // The visual clue for the menu is added to the given element
-  constructor (pParentElement, pIsSmall) {
+  constructor (pParentElement, pStyle) {
 
     // allow reduced code on the caller side
     if (pParentElement.tagName === "TR") {
@@ -48,8 +48,8 @@ export class DropDownMenu {
       this.menuButton = Utils.createDiv("", Character.CH_HAMBURGER);
     }
     this.menuButton.classList.add("small-button", "small-button-for-hover", "menu-dropdown");
-    if (pIsSmall) {
-      this.menuButton.classList.add("small-small-button");
+    if (pStyle) {
+      this.menuButton.classList.add(pStyle + "-small-button");
     }
     this.menuButton.addEventListener("click", (pClickEvent) => {
       // better support for touch screens where user touch
@@ -114,9 +114,9 @@ export class DropDownMenu {
 
   static _sanitizeMenuItemTitle (pTitle) {
     return pTitle.
-      replace(" ", Character.NO_BREAK_SPACE).
-      replace("-", Character.NON_BREAKING_HYPHEN).
-      replace("...", Character.HORIZONTAL_ELLIPSIS);
+      replaceAll(" ", Character.NO_BREAK_SPACE).
+      replaceAll("-", Character.NON_BREAKING_HYPHEN).
+      replaceAll("...", Character.HORIZONTAL_ELLIPSIS);
   }
 
   // Add a menu item at the end of this dropdown menu
@@ -126,7 +126,7 @@ export class DropDownMenu {
   // This allows dynamic menuitem titles (use menuitem.innerText)
   // or visibility (use menuitem.style.display = "none"/"inline-block")
   addMenuItem (pTitle, pCallBack, pValue) {
-    const button = Utils.createDiv("run-command-button", "...");
+    const button = Utils.createDiv("run-command-button", Character.HORIZONTAL_ELLIPSIS);
     if (pValue) {
       button._value = pValue;
     }

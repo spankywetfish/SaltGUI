@@ -1,7 +1,9 @@
 /* global config */
 
+import {Character} from "./Character.js";
 import {CommandBox} from "./CommandBox.js";
 import {Router} from "./Router.js";
+import {TargetType} from "./TargetType.js";
 import {Utils} from "./Utils.js";
 
 export class HTTPError extends Error {
@@ -179,11 +181,12 @@ export class API {
     return this.apiRequest("POST", "/", params);
   }
 
-  getLocalTestProviders () {
+  getLocalTestProviders (pTgt) {
     const params = {
       "client": "local",
       "fun": "test.providers",
-      "tgt": "*"
+      "tgt": pTgt,
+      "tgt_type": TargetType.getTargetTypeFromTarget(pTgt)
     };
     return this.apiRequest("POST", "/", params);
   }
@@ -191,9 +194,28 @@ export class API {
   getLocalTestVersion (pNodegroup) {
     const params = {
       "client": "local",
+      "full_return": true,
       "fun": "test.version",
       "tgt": "N@" + pNodegroup,
       "tgt_type": "compound"
+    };
+    return this.apiRequest("POST", "/", params);
+  }
+
+  getRunnerCacheGrains (pTgt) {
+    const params = {
+      "client": "runner",
+      "fun": "cache.grains",
+      "tgt": pTgt || "*"
+    };
+    return this.apiRequest("POST", "/", params);
+  }
+
+  getRunnerCachePillar (pTgt) {
+    const params = {
+      "client": "runner",
+      "fun": "cache.pillar",
+      "tgt": pTgt || "*"
     };
     return this.apiRequest("POST", "/", params);
   }
@@ -230,6 +252,15 @@ export class API {
     const params = {
       "client": "runner",
       "fun": "manage.versions"
+    };
+    return this.apiRequest("POST", "/", params);
+  }
+
+  getRunnerStateOrchestrateShowSls () {
+    const params = {
+      "arg": ["*"],
+      "client": "runner",
+      "fun": "state.orchestrate_show_sls"
     };
     return this.apiRequest("POST", "/", params);
   }
@@ -417,7 +448,7 @@ export class API {
       // it is long and boring (so not because it is a secret)
       // the sizes are so that the first and last 8 characters of the public key are still shown
       if (data.pub && data.pub.length > 75) {
-        data.pub = data.pub.substring(0, 35) + "..." + data.pub.substring(data.pub.length - 33);
+        data.pub = data.pub.substring(0, 35) + Character.HORIZONTAL_ELLIPSIS + data.pub.substring(data.pub.length - 33);
       }
 
       // salt/beacon/<minion>/<beacon>/
@@ -448,6 +479,7 @@ export class API {
         Router.templatesPage.handleSaltJobRetEvent(data);
         Router.reactorsPage.handleSaltJobRetEvent(data);
         Router.highStatePage.handleSaltJobRetEvent(data);
+        Router.issuesPage.handleSaltJobRetEvent(data);
       } else if (tag.startsWith("salt/job/") && tag.includes("/prog/")) {
         // progress value (exists only for states)
         CommandBox.handleSaltJobProgEvent(tag, data);

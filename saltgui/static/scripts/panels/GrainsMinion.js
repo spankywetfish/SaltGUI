@@ -1,5 +1,6 @@
 /* global */
 
+import {Character} from "../Character.js";
 import {DropDownMenu} from "../DropDown.js";
 import {Output} from "../output/Output.js";
 import {Panel} from "./Panel.js";
@@ -10,16 +11,19 @@ export class GrainsMinionPanel extends Panel {
   constructor () {
     super("grains-minion");
 
-    this.addTitle("Grains on ...");
+    this.addTitle("Grains on " + Character.HORIZONTAL_ELLIPSIS);
     this.addPanelMenu();
     this._addPanelMenuItemGrainsSetValAdd();
     this._addPanelMenuItemSaltUtilRefreshGrains();
 
     this.addSearchButton();
-    this.addCloseButton();
-    this.addTable(["Name", "-menu-", "Value"]);
+    if (Utils.getQueryParam("popup") !== "true") {
+      this.addCloseButton();
+    }
+    this.addWarningField();
+    this.addTable(["-menu-", "Name", "Value"]);
     this.setTableSortable("Name", "asc");
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
   }
 
@@ -28,7 +32,10 @@ export class GrainsMinionPanel extends Panel {
 
     this.updateTitle("Grains on " + minionId);
 
-    const localGrainsItemsPromise = this.api.getLocalGrainsItems(minionId);
+    const useCacheGrains = Utils.getStorageItemBoolean("session", "use_cache_for_grains", false);
+    this.setWarningText("info", useCacheGrains ? "the content of this screen is based on cached grains info, minion status or grain info may not be accurate" : "");
+
+    const localGrainsItemsPromise = useCacheGrains ? this.api.getRunnerCacheGrains(minionId) : this.api.getLocalGrainsItems(minionId);
 
     localGrainsItemsPromise.then((pLocalGrainsItemsData) => {
       this._handleLocalGrainsItems(pLocalGrainsItemsData, minionId);
@@ -62,12 +69,13 @@ export class GrainsMinionPanel extends Panel {
     for (const grainName of grainNames) {
       const grainTr = Utils.createTr();
 
+      const grainMenu = new DropDownMenu(grainTr, "smaller");
+
       const grainNameTd = Utils.createTd("grain-name", grainName);
       grainTr.appendChild(grainNameTd);
 
       const grainValue = Output.formatObject(grains[grainName]);
 
-      const grainMenu = new DropDownMenu(grainTr, true);
       this._addMenuItemGrainsSetValUpdate(grainMenu, pMinionId, grainName, grains);
       this._addMenuItemGrainsAppendWhenNeeded(grainMenu, pMinionId, grainName, grainValue);
       this._addMenuItemGrainsDelKey(grainMenu, pMinionId, grainName, grains[grainName]);

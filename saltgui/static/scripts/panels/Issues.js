@@ -22,7 +22,7 @@ export class IssuesPanel extends Panel {
       "that are observed in various categories."
     ]);
     this.addTable(["-menu-", "Description"]);
-    this.setTableClickable();
+    this.setTableClickable("cmd");
     this.addMsg();
 
     // keep the list of "loading..." messages
@@ -44,7 +44,7 @@ export class IssuesPanel extends Panel {
 
   updateFooter () {
     const txt = this.issuesStatus;
-    super.updateFooter(txt ? txt : "(loading)");
+    super.updateFooter(txt || "(loading)");
   }
 
   onShow () {
@@ -65,5 +65,16 @@ export class IssuesPanel extends Panel {
       this.setMsg("(error)");
       Utils.addToolTip(this.msgDiv, pErrorMsg);
     });
+  }
+
+  onHide () {
+    // from StateIssues
+    this.jobs = null;
+
+    if (this.issuesStateTimeout) {
+      // stop the timer when nobody is looking
+      window.clearTimeout(this.issuesStateTimeout);
+      this.issuesStateTimeout = null;
+    }
   }
 }

@@ -1,5 +1,7 @@
 /* global */
 
+import {BeaconsMinionPanel} from "../panels/BeaconsMinion.js";
+import {Character} from "../Character.js";
 import {Panel} from "./Panel.js";
 import {Router} from "../Router.js";
 import {Utils} from "../Utils.js";
@@ -7,6 +9,8 @@ import {Utils} from "../Utils.js";
 export class LoginPanel extends Panel {
 
   constructor () {
+    LoginPanel.version = "SaltGUI v1.32.0-snapshot";
+
     super("login");
 
     this.addTitle("SaltGUI");
@@ -43,7 +47,7 @@ export class LoginPanel extends Panel {
     form.append(password);
     this.passwordField = password;
 
-    // see https://docs.saltstack.com/en/latest/ref/auth/all/index.html
+    // see https://docs.saltproject.io/en/latest/ref/auth/all/index.html
     const select = Utils.createElem("select");
     form.append(select);
     this.eauthField = select;
@@ -65,7 +69,7 @@ export class LoginPanel extends Panel {
     img.src = "static/images/github.png";
     aa.append(img);
 
-    const txt = document.createTextNode("SaltGUI v1.30.0-snapshot");
+    const txt = document.createTextNode(LoginPanel.version);
     aa.append(txt);
 
     form.append(aa);
@@ -294,20 +298,28 @@ export class LoginPanel extends Panel {
   }
 
   _onLoginSuccess () {
-    this._showNoticeText("#4CAF50", "Please wait...", "notice_please_wait");
+    this._showNoticeText("#4CAF50", "Please wait" + Character.HORIZONTAL_ELLIPSIS, "notice_please_wait");
 
     Utils.setStorageItem("local", "salt-motd-txt", "");
     Utils.setStorageItem("local", "salt-motd-html", "");
 
     // We need these functions to populate the dropdown boxes
     const wheelConfigValuesPromise = this.api.getWheelConfigValues();
+    const runnerStateOrchestrateShowSlsPromise = this.api.getRunnerStateOrchestrateShowSls();
 
     // these may have been hidden on a previous logout
     Utils.hideAllMenus(false);
 
     // We need these functions to populate the dropdown boxes
+    // or determine visibility of menu items
     wheelConfigValuesPromise.then((pWheelConfigValuesData) => {
       LoginPanel._handleLoginWheelConfigValues(pWheelConfigValuesData);
+      Router.updateMainMenu();
+      return true;
+    }, () => false);
+    runnerStateOrchestrateShowSlsPromise.then((pRunnerStateOrchestrateShowSlsData) => {
+      LoginPanel._handleRunnerStateOrchestrateShowSls(pRunnerStateOrchestrateShowSlsData);
+      Router.updateMainMenu();
       return true;
     }, () => false);
 
@@ -334,6 +346,30 @@ export class LoginPanel extends Panel {
         }
       }
     }, 1000);
+
+    BeaconsMinionPanel.getAvailableBeacons(this.api);
+  }
+
+  static _handleRunnerStateOrchestrateShowSls (pRunnerStateOrchestrateShowSlsData) {
+    // until we prove it it available
+    Utils.setStorageItem("session", "orchestrations", "false");
+
+    const ret = pRunnerStateOrchestrateShowSlsData.return[0];
+    for (const key in ret) {
+      const obj = ret[key];
+      for (const stepkey in obj) {
+        const step = obj[stepkey].salt;
+        if (step === undefined) {
+          continue;
+        }
+        for (const item of step) {
+          if (item === "function" || item === "state" || item === "runner" || item === "wheel") {
+            Utils.setStorageItem("session", "orchestrations", "true");
+            return;
+          }
+        }
+      }
+    }
   }
 
   static _handleLoginWheelConfigValues (pWheelConfigValuesData) {
@@ -343,6 +379,13 @@ export class LoginPanel extends Panel {
 
     const templates = wheelConfigValuesData.saltgui_templates;
     Utils.setStorageItem("session", "templates", JSON.stringify(templates));
+
+    for (const templateName in templates) {
+      const template = templates[templateName];
+      if (template.key !== undefined) {
+        Utils.setStorageItem("session", "template_" + template.key, templateName);
+      }
+    }
 
     const reactors = wheelConfigValuesData.reactor;
     Utils.setStorageItem("session", "reactors", JSON.stringify(reactors));
@@ -359,7 +402,13 @@ export class LoginPanel extends Panel {
     const ipNumberField = wheelConfigValuesData.saltgui_ipnumber_field;
     Utils.setStorageItem("session", "ipnumber_field", ipNumberField);
     const ipNumberPrefix = wheelConfigValuesData.saltgui_ipnumber_prefix;
-    Utils.setStorageItem("session", "ipnumber_prefix", ipNumberPrefix);
+    Utils.setStorageItem("session", "ipnumber_prefix", JSON.stringify(ipNumberPrefix));
+
+    const maxShowHighstates = wheelConfigValuesData.saltgui_max_show_highstates;
+    Utils.setStorageItem("session", "max_show_highstates", JSON.stringify(maxShowHighstates));
+
+    const maxHighstateStates = wheelConfigValuesData.saltgui_max_highstate_states;
+    Utils.setStorageItem("session", "max_highstate_states", JSON.stringify(maxHighstateStates));
 
     const showSaltEnvs = wheelConfigValuesData.saltgui_show_saltenvs;
     Utils.setStorageItem("session", "show_saltenvs", JSON.stringify(showSaltEnvs));
@@ -370,6 +419,12 @@ export class LoginPanel extends Panel {
     Utils.setStorageItem("session", "show_jobs", JSON.stringify(showJobs));
     const hideJobs = wheelConfigValuesData.saltgui_hide_jobs;
     Utils.setStorageItem("session", "hide_jobs", JSON.stringify(hideJobs));
+
+    const useCacheForGrains = wheelConfigValuesData.saltgui_use_cache_for_grains;
+    Utils.setStorageItem("session", "use_cache_for_grains", JSON.stringify(useCacheForGrains));
+
+    const useCacheForPillar = wheelConfigValuesData.saltgui_use_cache_for_pillar;
+    Utils.setStorageItem("session", "use_cache_for_pillar", JSON.stringify(useCacheForPillar));
 
     const syndicMaster = wheelConfigValuesData.syndic_master;
     Utils.setStorageItem("session", "syndic_master", syndicMaster);
@@ -422,7 +477,19 @@ export class LoginPanel extends Panel {
     const fullReturn = wheelConfigValuesData.saltgui_full_return;
     Utils.setStorageItem("session", "full_return", fullReturn);
 
-    Router.updateMainMenu();
+    const id = wheelConfigValuesData.id;
+    const clusterId = wheelConfigValuesData.cluster_id;
+    const clusterPeers = wheelConfigValuesData.cluster_peers;
+    if (id && clusterId && clusterPeers) {
+      const clusterInfo = "This is node " + id + " from cluster " + clusterId + " " + JSON.stringify(clusterPeers).replace(/"/g, "");
+      Utils.setStorageItem("session", "cluster_info", clusterInfo);
+    }
+
+    let testProvidersTarget = wheelConfigValuesData.test_providers_target;
+    if (!testProvidersTarget) {
+      testProvidersTarget = "*";
+    }
+    Utils.setStorageItem("session", "test_providers_target", testProvidersTarget);
   }
 
   _onLoginFailure (error) {

@@ -1,6 +1,5 @@
 /* global */
 
-import {DropDownMenu} from "../DropDown.js";
 import {Panel} from "./Panel.js";
 import {Utils} from "../Utils.js";
 
@@ -11,15 +10,19 @@ export class PillarsPanel extends Panel {
 
     this.addTitle("Pillars");
     this.addSearchButton();
-    this.addTable(["Minion", "Status", "Pillars", "-menu-"]);
+    this.addWarningField();
+    this.addTable(["-menu-", "Minion", "Status", "Pillars"]);
     this.setTableSortable("Minion", "asc");
-    this.setTableClickable();
+    this.setTableClickable("page");
     this.addMsg();
   }
 
   onShow () {
+    const useCachePillar = Utils.getStorageItemBoolean("session", "use_cache_for_pillar", false);
+    this.setWarningText("info", useCachePillar ? "the content of this screen is based on cached grains info, minion status or pillar info may not be accurate" : "");
+
     const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
-    const localPillarObfuscatePromise = this.api.getLocalPillarObfuscate(null);
+    const localPillarObfuscatePromise = useCachePillar ? this.api.getRunnerCachePillar(null) : this.api.getLocalPillarObfuscate(null);
 
     this.nrMinions = 0;
 
@@ -52,14 +55,13 @@ export class PillarsPanel extends Panel {
 
     const minionIds = keys.minions.sort();
     for (const minionId of minionIds) {
-      const minionTr = this.addMinion(minionId, 1);
+      const minionTr = this.addMinion(minionId);
 
       // preliminary dropdown menu
-      const menu = new DropDownMenu(minionTr, true);
-      this._addMenuItemShowPillars(menu, minionId);
+      this._addMenuItemShowPillars(minionTr.dropdownmenu, minionId);
 
       minionTr.addEventListener("click", (pClickEvent) => {
-        this.router.goTo("pillars-minion", {"minionid": minionId});
+        this.router.goTo("pillars-minion", {"minionid": minionId}, undefined, pClickEvent);
         pClickEvent.stopPropagation();
       });
     }
@@ -74,7 +76,6 @@ export class PillarsPanel extends Panel {
 
     // force same columns on all rows
     minionTr.appendChild(Utils.createTd("pillarinfo"));
-    minionTr.appendChild(Utils.createTd("run-command-button"));
   }
 
   updateMinion (pMinionData, pMinionId, pAllMinionsGrains) {
@@ -99,13 +100,12 @@ export class PillarsPanel extends Panel {
     }
     minionTr.appendChild(pillarInfoTd);
 
-    const menu = new DropDownMenu(minionTr, true);
-    this._addMenuItemShowPillars(menu, pMinionId);
+    this._addMenuItemShowPillars(minionTr.dropdownmenu, pMinionId);
   }
 
   _addMenuItemShowPillars (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show pillars", () => {
-      this.router.goTo("pillars-minion", {"minionid": pMinionId});
+    pMenu.addMenuItem("Show pillars", (pClickEvent) => {
+      this.router.goTo("pillars-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 }

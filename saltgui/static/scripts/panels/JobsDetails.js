@@ -38,9 +38,9 @@ export class JobsDetailsPanel extends JobsPanel {
       "It is possible to define exceptions on that, and also to define additions to that.",
       "See README.md for more details."
     ]);
-    this.addTable(["JID", "Target", "Function", "Start Time", "-menu-", "Status", "Details"], "data-list-jobs");
+    this.addTable(["-menu-", "JID", "Target", "Function", "Start Time", "Status", "Details"], "data-list-jobs");
     this.setTableSortable("JID", "desc");
-    this.setTableClickable();
+    this.setTableClickable("page");
     this.addMsg();
   }
 
@@ -62,6 +62,14 @@ export class JobsDetailsPanel extends JobsPanel {
     this.settingsMenu._value = cnt;
 
     super.onShow(cnt);
+  }
+
+  onHide () {
+    if (this.updateNextJobInterval) {
+      // stop the timer when nobody is looking
+      window.clearInterval(this.updateNextJobInterval);
+      this.updateNextJobInterval = null;
+    }
   }
 
   jobsListIsReady () {
@@ -170,13 +178,13 @@ export class JobsDetailsPanel extends JobsPanel {
         continue;
       }
       detailsField.classList.add("no-job-details");
-      detailsField.innerText = "loading...";
+      detailsField.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       tr.dataset.isLoading = "true";
       const jobId = tr.dataset.jobid;
 
       if (this.nrErrors >= 3) {
         // don't bother getting more data
-        // may show more then 3 errors when some are stil in-flight
+        // may show more then 3 errors when some are still in-flight
         this._handleJobsRunnerJobsListJob(jobId, "skipped");
         continue;
       }
@@ -185,6 +193,7 @@ export class JobsDetailsPanel extends JobsPanel {
       // only update one item at a time
       return;
     }
+
     if (!workLeft) {
       this.setPlayPauseButton("none");
       this.updateFooter();
@@ -336,13 +345,16 @@ export class JobsDetailsPanel extends JobsPanel {
     const tr = Utils.createTr();
     tr.id = Utils.getIdFromJobId(job.id);
     tr.dataset.jobid = job.id;
+
+    const menu = new DropDownMenu(tr, "smaller");
+
     tr.appendChild(Utils.createTd("", job.id));
 
     let targetText = TargetType.makeTargetText(job);
     const maxTextLength = 50;
     if (targetText.length > maxTextLength) {
       // prevent column becoming too wide
-      targetText = targetText.substring(0, maxTextLength) + "...";
+      targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
     }
     tr.appendChild(Utils.createTd("target", targetText));
 
@@ -350,7 +362,7 @@ export class JobsDetailsPanel extends JobsPanel {
     let functionText = job.Function + argumentsText;
     if (functionText.length > maxTextLength) {
       // prevent column becoming too wide
-      functionText = functionText.substring(0, maxTextLength) + "...";
+      functionText = functionText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
     }
     tr.appendChild(Utils.createTd("function", functionText));
 
@@ -360,16 +372,15 @@ export class JobsDetailsPanel extends JobsPanel {
     startTimeTd.appendChild(startTimeSpan);
     tr.appendChild(startTimeTd);
 
-    const menu = new DropDownMenu(tr, true);
     this._addJobsMenuItemShowDetails(menu, job);
     this._addMenuItemJobsRerunJob(menu, job, argumentsText);
 
     const statusTd = Utils.createTd();
-    const statusSpan = Utils.createSpan(["job-status", "no-job-status"], "loading...");
+    const statusSpan = Utils.createSpan(["job-status", "no-job-status"], "loading" + Character.HORIZONTAL_ELLIPSIS);
     statusSpan.addEventListener("click", (pClickEvent) => {
       // show "loading..." only once, but we are updating the whole column
       statusSpan.classList.add("no-job-status");
-      statusSpan.innerText = "loading...";
+      statusSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this.startRunningJobs();
       pClickEvent.stopPropagation();
     });
@@ -383,7 +394,7 @@ export class JobsDetailsPanel extends JobsPanel {
     const detailsSpan = Utils.createSpan(["details2", "no-job-details"], "(click)");
     detailsSpan.addEventListener("click", (pClickEvent) => {
       detailsSpan.classList.add("no-job-details");
-      detailsSpan.innerText = "loading...";
+      detailsSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this._getJobDetails(job.id);
       pClickEvent.stopPropagation();
     });
@@ -402,14 +413,14 @@ export class JobsDetailsPanel extends JobsPanel {
     tbody.appendChild(tr);
 
     tr.addEventListener("click", (pClickEvent) => {
-      this.router.goTo("job", {"id": job.id});
+      this.router.goTo("job", {"id": job.id}, undefined, pClickEvent);
       pClickEvent.stopPropagation();
     });
   }
 
   _addJobsMenuItemShowDetails (pMenu, job) {
-    pMenu.addMenuItem("Show details", () => {
-      this.router.goTo("job", {"id": job.id});
+    pMenu.addMenuItem("Show details", (pClickEvent) => {
+      this.router.goTo("job", {"id": job.id}, undefined, pClickEvent);
     });
   }
 
@@ -423,7 +434,7 @@ export class JobsDetailsPanel extends JobsPanel {
   _addJobsMenuItemUpdateStatus (pMenu, pStatusSpan) {
     pMenu.addMenuItem("Update status", () => {
       pStatusSpan.classList.add("no-job-status");
-      pStatusSpan.innerText = "loading...";
+      pStatusSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this.startRunningJobs();
     });
   }
@@ -431,7 +442,7 @@ export class JobsDetailsPanel extends JobsPanel {
   _addMenuItemUpdateDetails (pMenu, pDetailsSpan, job) {
     pMenu.addMenuItem("Update details", () => {
       pDetailsSpan.classList.add("no-job-details");
-      pDetailsSpan.innerText = "loading...";
+      pDetailsSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this._getJobDetails(job.id);
     });
   }

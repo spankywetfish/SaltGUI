@@ -1,5 +1,6 @@
 /* global */
 
+import {Character} from "../Character.js";
 import {DropDownMenu} from "../DropDown.js";
 import {Output} from "../output/Output.js";
 import {Panel} from "./Panel.js";
@@ -12,10 +13,13 @@ export class JobPanel extends Panel {
   constructor () {
     super("job");
 
-    this.addTitle("... on ...");
-    this.addCloseButton();
+    this.addTitle(Character.HORIZONTAL_ELLIPSIS + " on " + Character.HORIZONTAL_ELLIPSIS);
+    if (Utils.getQueryParam("popup") !== "true") {
+      this.addCloseButton();
+    }
     this.addPanelMenu();
     this.addSearchButton();
+    this.addPlayPauseButton();
 
     // 1: re-run with original target pattern
     this._addPanelMenuItemJobRerunJob();
@@ -54,6 +58,32 @@ export class JobPanel extends Panel {
     this.div.append(this.output);
   }
 
+  updateFooter () {
+    // PlayPause uses this as call-back
+    if (this.playOrPause === "play" || this.playOrPause === "pause") {
+      // store the user preference for next time
+      Utils.setStorageItem("local", "jobrefresh", this.playOrPause);
+    }
+  }
+
+  _scheduleRefreshJob () {
+    const jobsActiveSpan = document.getElementById("summary-jobs-active");
+    if (jobsActiveSpan && jobsActiveSpan.innerText === "done") {
+      // no updates after "done"
+      this.setPlayPauseButton("none");
+      return;
+    }
+
+    this.refreshJobTimeout = window.setTimeout(() => {
+      this.refreshJobTimeout = null;
+      if (this.playOrPause === "play") {
+        this.onShow();
+      } else {
+        this._scheduleRefreshJob();
+      }
+    }, 5000);
+  }
+
   onShow () {
     const jobId = decodeURIComponent(Utils.getQueryParam("id"));
     const minionId = decodeURIComponent(Utils.getQueryParam("minionid"));
@@ -67,17 +97,34 @@ export class JobPanel extends Panel {
       this._handleJobRunnerJobsListJob(pRunnerJobsListJobData, jobId, minionId);
       runnerJobsActivePromise.then((pRunnerJobsActiveData) => {
         this._handleRunnerJobsActive(jobId, pRunnerJobsActiveData);
+        this._scheduleRefreshJob();
         return true;
       }, (pRunnerJobsActiveMsg) => {
         this._handleRunnerJobsActive(jobId, JSON.stringify(pRunnerJobsActiveMsg));
+        this.setPlayPauseButton("none");
         return false;
       });
       return true;
     }, (pRunnerJobsListJobsMsg) => {
       this._handleJobRunnerJobsListJob(JSON.stringify(pRunnerJobsListJobsMsg), jobId, undefined);
       Utils.ignorePromise(runnerJobsActivePromise);
+      this.setPlayPauseButton("none");
       return false;
     });
+
+    let jobRefresh = Utils.getStorageItem("local", "jobrefresh", "pause");
+    if (jobRefresh !== "play" && jobRefresh !== "pause") {
+      jobRefresh = "pause";
+    }
+    this.setPlayPauseButton(jobRefresh);
+  }
+
+  onHide () {
+    if (this.refreshJobTimeout) {
+      // stop the timer when nobody is looking
+      window.clearTimeout(this.refreshJobTimeout);
+      this.refreshJobTimeout = null;
+    }
   }
 
   static _isResultOk (result) {
@@ -106,7 +153,7 @@ export class JobPanel extends Panel {
     return JSON.stringify(pObj);
   }
 
-  static decodeArgumentsArray (rawArguments) {
+  static decodeArgumentsArray (rawArguments, dictsAreKwArgs = false) {
 
     if (rawArguments === undefined) {
       // no arguments
@@ -128,7 +175,9 @@ export class JobPanel extends Panel {
     let ret = "";
     for (const obj of rawArguments) {
       // all KWARGS are one entry in the parameters array
-      if (obj && typeof obj === "object" && "__kwarg__" in obj) {
+      // not all dicts have __kwarg__ to recognize them
+      // in that case, the caller must decide
+      if (obj && typeof obj === "object" && (dictsAreKwArgs || "__kwarg__" in obj)) {
         const keys = Object.keys(obj).sort();
         for (const key of keys) {
           if (key === "__kwarg__") {
@@ -179,6 +228,11 @@ export class JobPanel extends Panel {
 
     // use same formatter as direct commands
     let argumentsText = JobPanel.decodeArgumentsArray(info.Arguments);
+    if (!argumentsText && info.Function.startsWith("runner.")) {
+      // runners keep the given arguments elsewhere
+      const fakeMinion = Object.keys(info.Result)[0];
+      argumentsText = JobPanel.decodeArgumentsArray(info.Result[fakeMinion].return.fun_args, true);
+    }
 
     this.targettype = info["Target-type"];
     if (Array.isArray(info.Target)) {
@@ -186,7 +240,10 @@ export class JobPanel extends Panel {
     } else {
       this.target = info.Target;
     }
-    this.commandtext = info.Function + argumentsText;
+    // runner commands are sometimes "runner." and sometimes "runners.".
+    // it is a big mismatch between documentation and system.
+    // we just compensate for that everywhere.
+    this.commandtext = info.Function.replace(/^runner[.]/, "runners.") + argumentsText;
     this.jobid = pJobId;
     this.minions = info.Minions;
     this.result = info.Result;
@@ -197,16 +254,24 @@ export class JobPanel extends Panel {
     // ============================
 
     const maxTextLength = 50;
-    let displayArguments = null;
+    const extraInfo = [];
+
     if (argumentsText.length > maxTextLength) {
-      // prevent column becoming too wide
-      displayArguments = this.commandtext;
-      argumentsText = argumentsText.substring(0, maxTextLength) + "...";
+      // prevent title becoming too wide
+      // save info for display in actual output box
+      extraInfo.push(this.commandtext);
+      argumentsText = argumentsText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
     }
 
-    const functionText = info.Function + argumentsText + " on " +
-      TargetType.makeTargetText(info);
-    this.updateTitle(functionText);
+    let targetText = "on " + TargetType.makeTargetText(info);
+    if (targetText.length > maxTextLength) {
+      // prevent title becoming too wide
+      // save info for display in actual output box
+      extraInfo.push(targetText);
+      targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
+    }
+
+    this.updateTitle(info.Function + argumentsText + " " + targetText);
 
     Output.dateTimeStr(info.StartTime, this.timeField, "bottom-left");
 
@@ -217,8 +282,12 @@ export class JobPanel extends Panel {
     } else if (info.Function.startsWith("wheel.")) {
       minions = ["WHEEL"];
       this.setWarningText("info", "WHEEL jobs are not associated with minions");
-    } else if (info.Function.startsWith("runners.")) {
-      minions = ["RUNNER"];
+    } else if (info.Function.startsWith("runner.")) {
+      if (typeof info.Result === "object") {
+        minions = Object.keys(info.Result);
+      } else {
+        minions = ["RUNNER"];
+      }
       this.setWarningText("info", "RUNNER jobs are not associated with minions");
     } else {
       minions = Object.keys(this.result);
@@ -236,7 +305,7 @@ export class JobPanel extends Panel {
       initialStatus = "(loading)";
       this.jobIsTerminated = false;
     }
-    Output.addResponseOutput(this.output, pJobId, minions, info.Result, info.Function, initialStatus, pMinionId, displayArguments);
+    Output.addResponseOutput(this.output, pJobId, minions, info.Result, info.Function, initialStatus, pMinionId, extraInfo);
 
     // replace any jobid
     // Don't do this with output.innerHTML as there are already
@@ -258,7 +327,7 @@ export class JobPanel extends Panel {
         Utils.addToolTip(link, "this job");
       } else {
         link.addEventListener("click", (pClickEvent) => {
-          this.router.goTo("job", {"id": linkToJid});
+          this.router.goTo("job", {"id": linkToJid}, undefined, pClickEvent);
           pClickEvent.stopPropagation();
         });
       }
@@ -477,6 +546,7 @@ export class JobPanel extends Panel {
     if (typeof pData !== "object") {
       summaryJobsActiveSpan.innerText = "(error)";
       Utils.addToolTip(summaryJobsActiveSpan, pData, "bottom-left");
+      this.setPlayPauseButton("none");
       return;
     }
 
@@ -486,6 +556,7 @@ export class JobPanel extends Panel {
     if (!info) {
       summaryJobsActiveSpan.innerText = "done";
       this.jobIsTerminated = true;
+      this.setPlayPauseButton("none");
       return;
     }
     this.jobIsTerminated = false;
@@ -493,7 +564,7 @@ export class JobPanel extends Panel {
     summaryJobsActiveSpan.innerText = info.Running.length + " active";
     summaryJobsActiveSpan.insertBefore(Utils.createJobStatusSpan(pJobId, true), summaryJobsActiveSpan.firstChild);
     summaryJobsActiveSpan.addEventListener("click", (pClickEvent) => {
-      this.output.innerText = "loading...";
+      this.output.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this.onShow();
       this.panelMenu.verifyAll();
       pClickEvent.stopPropagation();
@@ -514,7 +585,7 @@ export class JobPanel extends Panel {
         // show that this minion is still active on the request
         noResponseSpan.innerText = "(active) ";
 
-        const menu = new DropDownMenu(noResponseSpan, true);
+        const menu = new DropDownMenu(noResponseSpan, "verysmall");
         menu.addMenuItem("Show process info...", () => {
           const cmdArr = ["ps.proc_info", pid];
           this.runCommand("", minionId, cmdArr);

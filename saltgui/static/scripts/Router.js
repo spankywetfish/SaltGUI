@@ -18,6 +18,7 @@ import {LogoutPage} from "./pages/Logout.js";
 import {MinionsPage} from "./pages/Minions.js";
 import {NodegroupsPage} from "./pages/Nodegroups.js";
 import {OptionsPage} from "./pages/Options.js";
+import {OrchestrationsPage} from "./pages/Orchestrations.js";
 import {Output} from "./output/Output.js";
 import {PillarsMinionPage} from "./pages/PillarsMinion.js";
 import {PillarsPage} from "./pages/Pillars.js";
@@ -57,11 +58,18 @@ export class Router {
     this._registerPage(Router.templatesPage = new TemplatesPage(this));
     this._registerPage(Router.eventsPage = new EventsPage(this));
     this._registerPage(Router.reactorsPage = new ReactorsPage(this));
+    this._registerPage(Router.orchestrationsPage = new OrchestrationsPage(this));
     this._registerPage(Router.optionsPage = new OptionsPage(this));
     this._registerPage(Router.issuesPage = new IssuesPage(this));
     this._registerPage(Router.logoutPage = new LogoutPage(this));
 
     this._registerRouterEventListeners();
+
+    const logo = document.getElementById("logo");
+    Utils.addToolTip(logo, "CTRL-click here to see\nOptions and Stats", "logo");
+
+    const fab = document.querySelector(".fab");
+    Utils.addToolTip(fab, "Click here or type 'c'\nto show manual run", "fab");
 
     Router.updateMainMenu();
 
@@ -74,7 +82,13 @@ export class Router {
     /* eslint-enable compat/compat */
   }
 
-  _registerMenuItem (pParentId, pButtonId, pUrl) {
+  _registerMenuItem (pParentId, pButtonId, pUrl, pKey) {
+
+    // shortcut
+
+    if (pKey) {
+      Utils.setStorageItem("session", "menu_" + pKey, pUrl);
+    }
 
     // full menu
 
@@ -94,17 +108,30 @@ export class Router {
         dropDownDiv.append(dropdownContent);
       }
       const itemDiv = Utils.createDiv("run-command-button menu-item", pButtonId, "button-" + pButtonId + "1");
+      if (pKey) {
+        // currently applies to all, but just in case
+        itemDiv.classList.add("menu-item-first-letter");
+      }
       dropdownContent.append(itemDiv);
     } else {
       const topItemDiv = Utils.createDiv("menu-item", pButtonId, "button-" + pButtonId + "1");
       dropDownDiv.append(topItemDiv);
+      if (pKey) {
+        topItemDiv.classList.add("menu-item-first-letter");
+      }
     }
 
     // mini menu
 
     const miniMenuDiv = document.querySelector(".minimenu");
     const dropdownContent2 = miniMenuDiv.querySelector(".dropdown-content");
-    const menuItemDiv = Utils.createDiv("run-command-button menu-item", (pParentId ? "-" + Character.NO_BREAK_SPACE : "") + pButtonId, "button-" + pButtonId + "2");
+    const menuItemDiv = Utils.createDiv("run-command-button menu-item", pButtonId, "button-" + pButtonId + "2");
+    if (pParentId) {
+      menuItemDiv.style.paddingLeft = "50px";
+    }
+    if (pKey) {
+      menuItemDiv.classList.add("menu-item-first-letter");
+    }
     dropdownContent2.append(menuItemDiv);
 
     // activate the menu items as needed
@@ -174,19 +201,21 @@ export class Router {
       /* eslint-enable compat/compat */
     });
 
-    this._registerMenuItem(null, "minions", "minions");
-    this._registerMenuItem("minions", "grains", "grains");
-    this._registerMenuItem("minions", "schedules", "schedules");
-    this._registerMenuItem("minions", "pillars", "pillars");
-    this._registerMenuItem("minions", "beacons", "beacons");
-    this._registerMenuItem("minions", "nodegroups", "nodegroups");
-    this._registerMenuItem(null, "keys", "keys");
-    this._registerMenuItem(null, "jobs", "jobs");
-    this._registerMenuItem("jobs", "highstate", "highstate");
-    this._registerMenuItem("jobs", "templates", "templates");
-    this._registerMenuItem(null, "events", "events");
-    this._registerMenuItem("events", "reactors", "reactors");
-    this._registerMenuItem(null, "issues", "issues");
+    this._registerMenuItem(null, "minions", "minions", "m");
+    this._registerMenuItem("minions", "grains", "grains", "g");
+    this._registerMenuItem("minions", "schedules", "schedules", "s");
+    this._registerMenuItem("minions", "pillars", "pillars", "p");
+    this._registerMenuItem("minions", "beacons", "beacons", "b");
+    this._registerMenuItem("minions", "nodegroups", "nodegroups", "n");
+    this._registerMenuItem(null, "keys", "keys", "k");
+    this._registerMenuItem(null, "jobs", "jobs", "j");
+    this._registerMenuItem("jobs", "highstate", "highstate", "h");
+    this._registerMenuItem("jobs", "orchestrations", "orchestrations", "o");
+    this._registerMenuItem("jobs", "templates", "templates", "t");
+    this._registerMenuItem(null, "events", "events", "e");
+    this._registerMenuItem("events", "reactors", "reactors", "r");
+    this._registerMenuItem(null, "issues", "issues", "i");
+    // no shortcut for logout
     this._registerMenuItem(null, "logout", "logout");
   }
 
@@ -252,29 +281,42 @@ export class Router {
     }
   }
 
+  static _cancelSelections () {
+    // see https://stackoverflow.com/questions/3169786/clear-text-selection-with-javascript
+    const sel = window.getSelection ? window.getSelection() : document.selection;
+    if (sel) {
+      if (sel.removeAllRanges) {
+        sel.removeAllRanges();
+      } else if (sel.empty) {
+        sel.empty();
+      }
+    }
+  }
+
   static updateMainMenu () {
     const pages = Router._getPagesList();
 
-    Router._showMenuItem(pages, Router.minionsPage, ["grains", "schedules", "pillars", "beacons"]);
+    Router._showMenuItem(pages, Router.minionsPage, ["grains", "schedules", "pillars", "beacons", "nodegroups"]);
     Router._showMenuItem(pages, Router.grainsPage);
     Router._showMenuItem(pages, Router.schedulesPage);
     Router._showMenuItem(pages, Router.pillarsPage);
     Router._showMenuItem(pages, Router.beaconsPage);
     Router._showMenuItem(pages, Router.nodegroupsPage);
     Router._showMenuItem(pages, Router.keysPage);
-    Router._showMenuItem(pages, Router.jobsPage, ["highstate", "templates"]);
+    Router._showMenuItem(pages, Router.jobsPage, ["highstate", "orchestrations", "templates"]);
     Router._showMenuItem(pages, Router.highStatePage);
+    Router._showMenuItem(pages, Router.orchestrationsPage);
     Router._showMenuItem(pages, Router.templatesPage);
-    Router._showMenuItem(pages, Router.issuesPage);
     Router._showMenuItem(pages, Router.eventsPage, ["reactors"]);
     Router._showMenuItem(pages, Router.reactorsPage);
+    Router._showMenuItem(pages, Router.issuesPage);
     Router._showMenuItem(pages, Router.logoutPage);
   }
 
   // pForward = 0 --> normal navigation
   // pForward = 1 --> back navigation using regular gui
   // pForward = 2 --> back navigation using browser
-  goTo (pHash, pQuery = {}, pForward = 0) {
+  goTo (pHash, pQuery = {}, pForward = 0, pEvent = null) {
 
     // close the command-box when it is stil open
     CommandBox.hideManualRun();
@@ -309,6 +351,11 @@ export class Router {
     const parentQuery = Object.fromEntries(new URLSearchParams(search));
     /* eslint-enable compat/compat */
 
+    let inNewWindow = false;
+    if (pEvent) {
+      inNewWindow = pEvent.altKey || pEvent.ctrlKey;
+    }
+
     for (const route of this.pages) {
       if (route.path !== pHash) {
         continue;
@@ -325,6 +372,10 @@ export class Router {
         url += sep + key + "=" + encodeURIComponent(value);
         sep = "&";
       }
+      if (inNewWindow) {
+        url += sep + "popup=true";
+        sep = "&";
+      }
       url += "#" + pHash;
       if (parentHash === route.path) {
         // page refresh
@@ -333,6 +384,12 @@ export class Router {
         window.history.replaceState({}, undefined, url);
       } else if (pForward === 0) {
         // forward navigation
+        if (inNewWindow) {
+          // in a new window
+          Router._cancelSelections();
+          window.open(url);
+          return;
+        }
         window.history.pushState({}, undefined, url);
         route.parentHash = parentHash;
         route.parentQuery = parentQuery;

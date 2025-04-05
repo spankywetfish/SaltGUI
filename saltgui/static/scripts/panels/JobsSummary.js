@@ -1,5 +1,6 @@
 /* global */
 
+import {Character} from "../Character.js";
 import {DropDownMenu} from "../DropDown.js";
 import {JobsPanel} from "./Jobs.js";
 import {Output} from "../output/Output.js";
@@ -16,8 +17,8 @@ export class JobsSummaryPanel extends JobsPanel {
 
     this.addTitle("Recent Jobs");
     this.addSearchButton();
-    this.addTable(null);
-    this.setTableClickable();
+    this.addTable(["-dummy-", "-dummy-"]);
+    this.setTableClickable("page");
     this.addMsg();
   }
 
@@ -35,13 +36,16 @@ export class JobsSummaryPanel extends JobsPanel {
     const tr = Utils.createTr();
     tr.id = Utils.getIdFromJobId(job.id);
 
+    // menu on left side to prevent it from going past end of window
+    const menu = new DropDownMenu(tr, "smaller");
+
     const td = Utils.createTd();
 
     let targetText = TargetType.makeTargetText(job);
     const maxTextLength = 50;
     if (targetText.length > maxTextLength) {
       // prevent column becoming too wide
-      targetText = targetText.substring(0, maxTextLength) + "...";
+      targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
     }
     const targetDiv = Utils.createDiv("target", targetText);
     td.appendChild(targetDiv);
@@ -50,12 +54,12 @@ export class JobsSummaryPanel extends JobsPanel {
     const functionDiv = Utils.createDiv("function", functionText);
     td.appendChild(functionDiv);
 
-    const statusSpan = Utils.createSpan(["job-status", "no-job-status"], "loading...");
+    const statusSpan = Utils.createSpan(["job-status", "no-job-status"], "loading" + Character.HORIZONTAL_ELLIPSIS);
     // effectively also the whole column, but it does not look like a column on screen
     statusSpan.addEventListener("click", (pClickEvent) => {
       // show "loading..." only once, but we are updating the whole column
       statusSpan.classList.add("no-job-status");
-      statusSpan.innerText = "loading...";
+      statusSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this.startRunningJobs();
       pClickEvent.stopPropagation();
     });
@@ -69,7 +73,7 @@ export class JobsSummaryPanel extends JobsPanel {
 
     tr.appendChild(td);
 
-    const menu = new DropDownMenu(tr, true);
+    // complete the menu
     this._addMenuItemShowDetails(menu, job);
     this._addMenuItemUpdateStatus(menu, statusSpan);
 
@@ -77,21 +81,21 @@ export class JobsSummaryPanel extends JobsPanel {
     tbody.appendChild(tr);
 
     tr.addEventListener("click", (pClickEvent) => {
-      this.router.goTo("job", {"id": job.id});
+      this.router.goTo("job", {"id": job.id}, undefined, pClickEvent);
       pClickEvent.stopPropagation();
     });
   }
 
   _addMenuItemShowDetails (pMenu, job) {
-    pMenu.addMenuItem("Show details", () => {
-      this.router.goTo("job", {"id": job.id});
+    pMenu.addMenuItem("Show details", (pClickEvent) => {
+      this.router.goTo("job", {"id": job.id}, undefined, pClickEvent);
     });
   }
 
   _addMenuItemUpdateStatus (pMenu, statusSpan) {
     pMenu.addMenuItem("Update status", () => {
       statusSpan.classList.add("no-job-status");
-      statusSpan.innerText = "loading...";
+      statusSpan.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
       this.startRunningJobs();
     });
   }

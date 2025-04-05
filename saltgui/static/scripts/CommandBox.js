@@ -87,21 +87,26 @@ export class CommandBox {
   }
 
   static _templateTmplMenuItemTitle (pTemplate) {
+    let keyboardHint = "";
+    if (pTemplate.key) {
+      keyboardHint = Character.NO_BREAK_SPACE + "[" + pTemplate.key + "]";
+    }
+
     if (CommandBox.templateTmplMenu._templateCategory === null) {
       // "(all)" selected, return all
-      return pTemplate.description;
+      return pTemplate.description + keyboardHint;
     }
     if (CommandBox.templateTmplMenu._templateCategory === undefined && pTemplate.category === undefined && pTemplate.categories === undefined) {
       // no category selected, return templates without category
-      return pTemplate.description;
+      return pTemplate.description + keyboardHint;
     }
     if (pTemplate.category && pTemplate.category === CommandBox.templateTmplMenu._templateCategory) {
       // item has one category, return when it matches
-      return pTemplate.description;
+      return pTemplate.description + keyboardHint;
     }
     if (pTemplate.categories && pTemplate.categories.indexOf(CommandBox.templateTmplMenu._templateCategory) >= 0) {
       // item has a list of categories, return when one matches
-      return pTemplate.description;
+      return pTemplate.description + keyboardHint;
     }
     return null;
   }
@@ -130,7 +135,7 @@ export class CommandBox {
       menu.addMenuItem(
         () => CommandBox._templateTmplMenuItemTitle(template),
         () => {
-          CommandBox._applyTemplate(template);
+          CommandBox.applyTemplateByTemplate(template);
         }
       );
     }
@@ -142,15 +147,15 @@ export class CommandBox {
 
     txt += "<h2>Target field</h2>";
     txt += "<p>";
-    txt += "Entries that contain a @, (, ) or space are assumed to be a compound target selection. See <a href='https://docs.saltstack.com/en/latest/topics/targeting/#compound-targeting' target='_blank' rel='noopener'>Compound Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Entries that contain a @, (, ) or space are assumed to be a compound target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/#compound-targeting' target='_blank' rel='noopener'>Compound Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
-    txt += "Entries that contain a COMMA are assumed to be a list target selection. See <a href='https://docs.saltstack.com/en/latest/topics/targeting/globbing.html#lists' target='_blank' rel='noopener'>List Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Entries that contain a COMMA are assumed to be a list target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/globbing.html#lists' target='_blank' rel='noopener'>List Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
-    txt += "Entries that start with a # are assumed to be a nodegroup target selection. See <a href='https://docs.saltstack.com/en/latest/topics/targeting/nodegroups.html' target='_blank' rel='noopener'>Nodegroup Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Entries that start with a # are assumed to be a nodegroup target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/nodegroups.html' target='_blank' rel='noopener'>Nodegroup Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
     txt += "Target '##connected' will immediately be replaced by the latest known list of connected minions.";
     txt += "<br/>";
-    txt += "Otherwise, the target is assumed to be a regular glob selection. See <a href='https://docs.saltstack.com/en/latest/topics/targeting/globbing.html#globbing' target='_blank' rel='noopener'>Globbing Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Otherwise, the target is assumed to be a regular glob selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/globbing.html#globbing' target='_blank' rel='noopener'>Globbing Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
     txt += "The dropdown-box to the right of the field is automatically updated with the assumed target type. When you do not agree, it is possible to manually select a value. That value will then be left alone by the system. Note that the dropdown-box only contains the choice 'Nodegroup' when nodegroups are configured in the <b>master</b> file.";
     txt += "<br/>";
@@ -250,33 +255,44 @@ export class CommandBox {
       });
   }
 
-  static _applyTemplate (template) {
-
-    if (template.targettype) {
-      let targetType = template.targettype;
+  static applyTemplateByProperties (pTargetType, pTarget, pCommand) {
+    if (pTargetType) {
       const targetbox = document.getElementById("target-box");
       // show the extended selection controls when
       targetbox.style.display = "inherit";
-      if (targetType !== "glob" && targetType !== "list" && targetType !== "compound" && targetType !== "nodegroup") {
+      if (pTargetType !== "glob" && pTargetType !== "list" && pTargetType !== "compound" && pTargetType !== "nodegroup") {
         // we don't support that, revert to standard (not default)
-        targetType = "glob";
+        pTargetType = "glob";
       }
-      TargetType.setTargetType(targetType);
+      TargetType.setTargetType(pTargetType);
     } else {
       // not in the template, revert to default
       TargetType.setTargetTypeDefault();
     }
 
-    if (template.target) {
+    if (pTarget) {
       const targetField = document.getElementById("target");
-      targetField.value = template.target;
+      targetField.value = pTarget;
       TargetType.autoSelectTargetType(targetField.value);
     }
 
-    if (template.command) {
+    if (pCommand) {
       const commandField = document.getElementById("command");
-      commandField.value = template.command;
+      commandField.value = pCommand;
     }
+  }
+
+  static applyTemplateByTemplate (pTemplate) {
+    CommandBox.applyTemplateByProperties(pTemplate.targettype, pTemplate.target, pTemplate.command);
+  }
+
+  static applyTemplateByName (pTemplateName) {
+    const templates = Utils.getStorageItemObject("session", "templates");
+    const template = templates[pTemplateName];
+    if (!template) {
+      return;
+    }
+    CommandBox.applyTemplateByTemplate(template);
   }
 
   static getScreenModifyingCommands () {
@@ -343,7 +359,7 @@ export class CommandBox {
     targetField.disabled = true;
     commandField.disabled = true;
     button.disabled = true;
-    output.innerText = "loading...";
+    output.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
 
     const screenModifyingCommands = CommandBox.getScreenModifyingCommands();
     // test whether the command may have caused an update to the list
@@ -412,20 +428,15 @@ export class CommandBox {
     manualRun.style.display = "block";
 
     const outputField = document.querySelector(".run-command pre");
-    outputField.innerText = "Waiting for command...";
+    outputField.innerText = "Waiting for command" + Character.HORIZONTAL_ELLIPSIS;
 
     const targetField = document.getElementById("target");
     TargetType.autoSelectTargetType(targetField.value);
-    targetField.onkeyup = (keyUpEvent) => {
-      if (keyUpEvent.key === "Escape") {
-        CommandBox.hideManualRun();
-      }
-    };
 
-    const commandField = document.getElementById("command");
-    commandField.onkeyup = (keyUpEvent) => {
+    document.onkeyup = (keyUpEvent) => {
       if (keyUpEvent.key === "Escape") {
         CommandBox.hideManualRun();
+        keyUpEvent.stopPropagation();
       }
     };
 
@@ -455,6 +466,8 @@ export class CommandBox {
       targetList.appendChild(option);
     }
 
+    const commandField = document.getElementById("command");
+
     // give another field (which does not have a list) focus first
     // because when a field gets focus 2 times in a row,
     // the dropdown box opens, and we don't want that...
@@ -463,13 +476,26 @@ export class CommandBox {
 
     CommandBox._populateTemplateCatMenu();
     CommandBox._populateTemplateTmplMenu();
+    CommandBox._populateTestProviders(pApi);
+  }
 
-    const localTestProviders = pApi.getLocalTestProviders();
+  static _populateTestProviders (pApi) {
+    if (Object.keys(Documentation.PROVIDERS).length > 0) {
+      // no need to collect it again
+      return;
+    }
 
+    const target = Utils.getStorageItem("session", "test_providers_target", "*");
+    if (target === "SKIP") {
+      Documentation.PROVIDERS = {"SKIPPED": []};
+      return;
+    }
+
+    const localTestProviders = pApi.getLocalTestProviders(target);
     localTestProviders.then((pData) => {
       Documentation._handleLocalTestProviders(pData);
     }, () => {
-      // VOID
+      Documentation.PROVIDERS = {"ERROR": []};
     });
   }
 
@@ -608,6 +634,20 @@ export class CommandBox {
     return this.api.apiRequest("POST", "/", params);
   }
 
+  static _createNewMinionRow (pMinionId) {
+    const div = Utils.createDiv("task-summary");
+    div.id = "run-" + Utils.getIdFromMinionId(pMinionId);
+    div.style.marginTop = 0;
+
+    const minionSpan1 = Utils.createSpan("", pMinionId);
+    div.appendChild(minionSpan1);
+
+    const minionSpan2 = Utils.createSpan("", ": " + Character.HOURGLASS_WITH_FLOWING_SAND + " ");
+    div.appendChild(minionSpan2);
+
+    return div;
+  }
+
   static handleSaltJobRetEvent (pTag, pData) {
     // salt/job/20201105221605666661/ret/ss04
     // {"jid": "20201105221605666661", "id": "ss04", "return": {"no_|-states_|-states_|-None": {"result": false, "comment": "No Top file or master_tops data matches found. Please see master log for details.", "name": "No States", "changes": {}, "__run_num__": 0}}, "retcode": 2, "success": false, "fun": "state.apply", "fun_args": null, "out": "highstate", "_stamp": "2020-11-05T22:16:06.377513"}
@@ -628,16 +668,8 @@ export class CommandBox {
     const id = "run-" + Utils.getIdFromMinionId(eventMinionId);
     let div = document.getElementById(id);
     if (div === null) {
-      div = Utils.createDiv();
-      div.id = "run-" + Utils.getIdFromMinionId(eventMinionId);
-      div.style.marginTop = 0;
-
-      const minionSpan1 = Utils.createSpan("", eventMinionId);
-      div.appendChild(minionSpan1);
-
-      const minionSpan2 = Utils.createSpan("", ": " + Character.HOURGLASS_WITH_FLOWING_SAND + " ");
-      div.appendChild(minionSpan2);
-
+      // for results from unexpected minions
+      div = CommandBox._createNewMinionRow(eventMinionId);
       const output = document.querySelector(".run-command pre");
       output.appendChild(div);
     }
@@ -680,10 +712,12 @@ export class CommandBox {
     const task = pData.data.ret;
 
     const divId = "run-" + Utils.getIdFromMinionId(eventMinionId);
-    const div = document.getElementById(divId);
+    let div = document.getElementById(divId);
     if (div === null) {
-      Utils.log("div=null, minion=" + eventMinionId);
-      return;
+      // for results from unexpected minions
+      div = CommandBox._createNewMinionRow(eventMinionId);
+      const output = document.querySelector(".run-command pre");
+      output.appendChild(div);
     }
 
     // make sure there is a black circle for the current event
@@ -699,7 +733,11 @@ export class CommandBox {
   static _prepareForAsyncResults (pResponse) {
     const ret = pResponse.return[0];
     CommandBox.jid = ret.jid;
-    CommandBox.minionIds = ret.minions;
+    if (ret.minions) {
+      CommandBox.minionIds = ret.minions.sort();
+    } else {
+      CommandBox.minionIds = [];
+    }
 
     const output = document.querySelector(".run-command pre");
 
@@ -724,17 +762,8 @@ export class CommandBox {
 
     // add new minions list to track progress of this state command
     for (const minionId of CommandBox.minionIds) {
-      const minionDiv = Utils.createDiv("task-summary");
-      minionDiv.id = "run-" + Utils.getIdFromMinionId(minionId);
-      minionDiv.style.marginTop = 0;
-
-      const minionSpan1 = Utils.createSpan("host-unknown", minionId);
-      minionDiv.appendChild(minionSpan1);
-
-      const minionSpan2 = Utils.createSpan("", ": " + Character.HOURGLASS_WITH_FLOWING_SAND + " ");
-      minionDiv.appendChild(minionSpan2);
-
-      output.appendChild(minionDiv);
+      const div = CommandBox._createNewMinionRow(minionId);
+      output.appendChild(div);
     }
 
     const warnSpan = Utils.createSpan(

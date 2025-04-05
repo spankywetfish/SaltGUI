@@ -73,15 +73,6 @@ td.tasks span.tasksummary {
   padding-right: 2px;
 }
 
-td .task-failure {
-  color: red;
-}
-
-pre .task-failure {
-  cursor: pointer;
-  color: red;
-}
-
 pre .minion-id.host-skips,
 pre #summary-jobs-active .host-skips,
 pre .minion-id.host-no-response,
@@ -89,46 +80,13 @@ pre #summary-jobs-active .host-no-response {
   color: yellow;
 }
 
-td .task-skipped {
-  color: yellow;
-}
-
-pre .task-skipped {
-  cursor: pointer;
-  color: yellow;
-}
-
 pre .minion-id {
   color: #4caf50;
-}
-
-td .task-success {
-  color: lime;
-}
-
-pre .task-success {
-  cursor: pointer;
-  color: lime;
-}
-
-td .task-changes {
-  color: aqua;
-  text-decoration-line: overline underline;
-  text-decoration-style: double;
-}
-
-pre .task-changes {
-  color: aqua;
 }
 
 .task-summary {
   word-break: break-all;
   line-height: 2em;
-}
-
-pre .task-summary .task-changes {
-  text-decoration-line: overline underline;
-  text-decoration-style: double;
 }
 
 pre span.active {
@@ -178,6 +136,10 @@ table tbody td {
 
 table thead th {
   border-bottom: 2px solid #ddd;
+}
+
+table tr th:last-child {
+  padding-right: 0;
 }
 
 table tr td:last-child {
@@ -300,7 +262,7 @@ table tr td:last-of-type {
   flex-grow: 1;
 }
 
-@media (max-width: 950px) {
+@media (width < 950px) {
   .minions {
     min-width: 0;
   }
@@ -314,23 +276,33 @@ table tr td:last-of-type {
   }
 }
 
-/* taskcircle */
+/* tasks */
 
-.taskcircle.task-success {
+.task-success {
   color: lime;
 }
 
-.taskcircle.task-failure {
+.task-success-changes {
+  color: aqua;
+}
+
+.task-failure,
+.task-failure-changes {
   color: red;
 }
 
-.taskcircle.task-skipped {
+.task-skipped,
+.task-skipped-changes {
   color: yellow;
 }
 
-.taskcircle.task-changes {
-  text-decoration-line: overline underline;
-  text-decoration-style: double;
+pre .task-success,
+pre .task-success-changes,
+pre .task-skipped,
+pre .task-skipped-changes,
+pre .task-failure,
+pre .task-failure-changes {
+  cursor: pointer;
 }
 
 @media print {
