@@ -1,4 +1,4 @@
-/* global */
+/* global document */
 
 import {CommandBox} from "../CommandBox.js";
 import {Router} from "../Router.js";
@@ -76,10 +76,9 @@ export class Page {
       return true;
     }
 
-    const pages = Router._getPagesList();
-    const page = Utils.getStorageItem("session", "menu_" + keyUpEvent.key, "");
-    // Arrays.includes() is only available from ES7/2016
-    if (page && (pages.length === 0 || pages.indexOf(page) >= 0)) {
+    const pages = Router.getPagesList();
+    const page = Router.keyBindings[keyUpEvent.key];
+    if (page && (pages.length === 0 || pages.includes(page))) {
       this.router.goTo(page);
       return true;
     }
@@ -152,11 +151,23 @@ export class Page {
     });
   }
 
+  /* eslint-disable class-methods-use-this */
+  onRegister () {
+  /* eslint-enable class-methods-use-this */
+    // a page does nothing when registered, unless the page decides otherwise
+  }
+
   onShow () {
     for (const panel of this.panels) {
       panel.onShow();
     }
     Page._updateMotd();
+  }
+
+  /* eslint-disable class-methods-use-this */
+  onHide () {
+  /* eslint-enable class-methods-use-this */
+    // a page does nothing when hidden, unless the page decides otherwise
   }
 
   clearPage () {

@@ -21,11 +21,11 @@ export class ReactorsPanel extends Panel {
   onShow () {
     const wheelConfigValuesPromise = this.api.getWheelConfigValues();
 
-    wheelConfigValuesPromise.then((pWheelConfigValuesData) => {
-      this._handleReactorsWheelConfigValues(pWheelConfigValuesData);
+    wheelConfigValuesPromise.then((ok_WheelConfigValues) => {
+      this._handleReactorsWheelConfigValues(ok_WheelConfigValues);
       return true;
-    }, (pWheelConfigValuesMsg) => {
-      this._handleReactorsWheelConfigValues(JSON.stringify(pWheelConfigValuesMsg));
+    }, (_error_WheelConfigValues) => {
+      this._handleReactorsWheelConfigValues(JSON.stringify(_error_WheelConfigValues));
       return false;
     });
   }
@@ -54,13 +54,13 @@ export class ReactorsPanel extends Panel {
     }
 
     // then populate the table
-    for (const eventTag of Object.keys(reactorsMap).sort()) {
+    for (const eventTag of Object.keys(reactorsMap).sort(Utils.mySortFunction)) {
       this._addReactor(eventTag, reactorsMap[eventTag]);
     }
 
     const txt = Utils.txtZeroOneMany(reactorsArr.length,
       "No reactors", "{0} reactor", "{0} reactors");
-    this.setMsg(txt);
+    this.setMsgTxt(txt);
   }
 
   _addReactor (pEvent, pReactor) {

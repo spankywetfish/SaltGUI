@@ -12,8 +12,16 @@ export class OrchestrationsPage extends Page {
 
     this.orchestrations = new OrchestrationsPanel();
     super.addPanel(this.orchestrations);
-    this.jobs = new JobsSummaryPanel();
-    super.addPanel(this.jobs);
+    if (Utils.getQueryParam("popup") !== "true") {
+      this.jobs = new JobsSummaryPanel();
+      super.addPanel(this.jobs);
+    }
+  }
+
+  handleSaltJobRetEvent (pData) {
+    if (this.jobs) {
+      this.jobs.handleSaltJobRetEvent(pData);
+    }
   }
 
   /* eslint-disable class-methods-use-this */

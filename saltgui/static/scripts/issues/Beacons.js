@@ -10,29 +10,31 @@ export class BeaconsIssues extends Issues {
 
     const localBeaconsListPromise = this.api.getLocalBeaconsList(null);
 
-    localBeaconsListPromise.then((pLocalBeaconsListData) => {
-      Issues.removeCategory(pPanel, "disabled-beacons");
-      Issues.removeCategory(pPanel, "disabled-beacon");
-      BeaconsIssues._handleLocalBeaconsList(pPanel, pLocalBeaconsListData);
-      Issues.readyCategory(pPanel, msg);
+    localBeaconsListPromise.then((ok_LocalBeaconsList) => {
+      this.removeCategory("disabled-beacons");
+      this.removeCategory("disabled-beacon");
+      this.removeCategory("offline");
+      this._handleLocalBeaconsList(ok_LocalBeaconsList);
+      this.readyCategory(pPanel, "disabled-beacons", msg);
+      this.readyCategory(pPanel, "disabled-beacon", msg);
+      this.readyCategory(pPanel, "offline", msg);
       return true;
-    }, (pLocalBeaconsListMsg) => {
-      Issues.removeCategory(pPanel, "disabled-beacons");
-      const tr1 = Issues.addIssue(pPanel, "disabled-beacons", "retrieving");
-      Issues.addIssueMsg(tr1, "Could not retrieve list of beacons");
-      Issues.addIssueErr(tr1, pLocalBeaconsListMsg);
-      Issues.removeCategory(pPanel, "disabled-beacon");
-      const tr2 = Issues.addIssue(pPanel, "disabled-beacon", "retrieving");
-      Issues.addIssueMsg(tr2, "Could not retrieve list of beacon");
-      Issues.addIssueErr(tr2, pLocalBeaconsListMsg);
-      Issues.readyCategory(pPanel, msg);
+    }, (_error_LocalBeaconsList) => {
+      this.removeCategory("disabled-beacons");
+      this.setIssueMsg("disabled-beacons", "retrieving", "Could not retrieve list of beacon schedulers");
+      this.setIssueErr("disabled-beacons", "retrieving", _error_LocalBeaconsList);
+      this.removeCategory("disabled-beacon");
+      this.setIssueMsg("disabled-beacon", "retrieving", "Could not retrieve list of beacons");
+      this.setIssueErr("disabled-beacon", "retrieving", _error_LocalBeaconsList);
+      this.readyCategory(pPanel, "disabled-beacons", msg);
+      this.readyCategory(pPanel, "disabled-beacon", msg);
       return false;
     });
 
     return localBeaconsListPromise;
   }
 
-  static simplify (beaconData) {
+  static _simplify (beaconData) {
     if (typeof beaconData === "object" && Array.isArray(beaconData)) {
       // beacon data is strange
       // it comes in an array of objects
@@ -45,30 +47,51 @@ export class BeaconsIssues extends Issues {
     return beaconData;
   }
 
-  static _handleLocalBeaconsList (pPanel, pLocalBeaconsListData) {
+  _handleLocalBeaconsList (pLocalBeaconsListData) {
     const allBeacons = pLocalBeaconsListData.return[0];
     for (const minionId in allBeacons) {
       const minionData = allBeacons[minionId];
-      for (const beaconName in minionData) {
-        if (beaconName === "enabled") {
-          // beacons flag
-          if (minionData.enabled === false) {
-            const tr = Issues.addIssue(pPanel, "disabled-beacons", minionId);
-            Issues.addIssueMsg(tr, "Beacons on minion '" + minionId + "' are disabled");
-            Issues.addIssueCmd(tr, "Enable beacons", minionId, ["beacons.enable"]);
-            Issues.addIssueNav(tr, "beacons-minion", {"minionid": minionId});
-          }
-        } else {
-          const beaconData = BeaconsIssues.simplify(minionData[beaconName]);
-          if (beaconData.enabled === false) {
-            const tr = Issues.addIssue(pPanel, "disabled-beacon", minionId + "-" + beaconName);
-            Issues.addIssueMsg(tr, "Beacon '" + beaconName + "' on '" + minionId + "' is disabled");
-            Issues.addIssueCmd(tr, "Enable beacon", minionId, ["beacons.enable_beacon", beaconName]);
-            Issues.addIssueCmd(tr, "Delete beacon", minionId, ["beacons.delete", beaconName]);
-            Issues.addIssueNav(tr, "beacons-minion", {"minionid": minionId});
-          }
-        }
+
+      if (!minionData) {
+        this._handleOfflineMinion(minionId);
+        continue;
       }
+
+      this._handleMinionBeacons(minionId, minionData);
+    }
+  }
+
+  _handleOfflineMinion (pMinionId) {
+    this.setIssueMsg("offline", pMinionId, "Minion '" + pMinionId + "' is offline");
+  }
+
+  _handleMinionBeacons (pMinionId, pMinionData) {
+    for (const beaconName in pMinionData) {
+      if (beaconName === "enabled") {
+        // beacons flag
+        this._handleDisabledBeacons(pMinionId, pMinionData);
+      } else {
+        this._handleDisabledBeacon(pMinionId, beaconName, pMinionData);
+      }
+    }
+  }
+
+  _handleDisabledBeacons (pMinionId, pMinionData) {
+    if (pMinionData.enabled === false) {
+      this.setIssueMsg("disabled-beacons", pMinionId, "Beacons on minion '" + pMinionId + "' are disabled");
+      this.addIssueCmd("disabled-beacons", pMinionId, "Enable beacons", pMinionId, ["beacons.enable"]);
+      this.addIssueNav("disabled-beacons", pMinionId, "beacons-minion", {"minionid": pMinionId});
+    }
+  }
+
+  _handleDisabledBeacon (pMinionId, pBeaconName, pMinionData) {
+    const beaconData = BeaconsIssues._simplify(pMinionData[pBeaconName]);
+    if (beaconData.enabled === false) {
+      const issueId = pMinionId + "-" + pBeaconName;
+      this.setIssueMsg("disabled-beacon", issueId, "Beacon '" + pBeaconName + "' on '" + pMinionId + "' is disabled");
+      this.addIssueCmd("disabled-beacon", issueId, "Enable beacon", pMinionId, ["beacons.enable_beacon", pBeaconName]);
+      this.addIssueCmd("disabled-beacon", issueId, "Delete beacon", pMinionId, ["beacons.delete", pBeaconName]);
+      this.addIssueNav("disabled-beacon", issueId, "beacons-minion", {"minionid": pMinionId});
     }
   }
 }

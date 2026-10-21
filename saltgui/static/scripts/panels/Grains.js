@@ -7,17 +7,18 @@ import {Utils} from "../Utils.js";
 export class GrainsPanel extends Panel {
 
   constructor () {
-    super("grains");
+    super("grains", ["select_minions"]);
 
     this.addTitle("Grains");
     this.addSearchButton();
+    this.addFilterButton();
     this.addHelpButton([
       "The content of specific well-known grains can be made visible in",
       "columns by configuring their name in the server-side configuration file.",
       "See README.md for more details."
     ]);
     this.addWarningField();
-    this.addTable(["-menu-", "Minion", "Status", "Salt version", "OS version", "Grains"]);
+    this.addTable(["-select-", "-menu-", "Minion", "Status", "Salt version", "OS version", "Grains"]);
 
     // cannot initialize sorting before all columns are present
     // this.setTableSortable("Minion", "asc");
@@ -26,6 +27,8 @@ export class GrainsPanel extends Panel {
   }
 
   onShow () {
+    super.onShow();
+
     if (this.previewColumsAdded !== true) {
       // collect the list of displayed extra grains
       this.previewGrains = Utils.getStorageItemList("session", "preview_grains");
@@ -34,7 +37,7 @@ export class GrainsPanel extends Panel {
       // the div is not added to the DOM yet
       const tr = this.div.querySelector("#grains-table-thead-tr");
       for (const previewGrain of this.previewGrains) {
-        const previewGrainTitle = previewGrain.replaceAll(/[=].*$/g, "");
+        const previewGrainTitle = previewGrain.replace(/[=].*$/g, ""); // NOSONAR S8786
         const th = Utils.createElem("th", "", previewGrainTitle);
         tr.appendChild(th);
       }
@@ -53,19 +56,19 @@ export class GrainsPanel extends Panel {
 
     this.nrMinions = 0;
 
-    wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
-      this._handleGrainsWheelKeyListAll(pWheelKeyListAllData);
-      localGrainsItemsPromise.then((pLocalGrainsItemsData) => {
-        this.updateMinions(pLocalGrainsItemsData);
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      this._handleGrainsWheelKeyListAll(ok_WheelKeyListAll);
+      localGrainsItemsPromise.then((ok_LocalGrainsItems) => {
+        this.updateMinions(ok_LocalGrainsItems);
         return true;
-      }, (pLocalGrainsItemsMsg) => {
-        const allMinionsErr = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, JSON.stringify(pLocalGrainsItemsMsg));
+      }, (_error_LocalGrainsItems) => {
+        const allMinionsErr = Utils.msgPerMinion(ok_WheelKeyListAll.return[0].data.return.minions, JSON.stringify(_error_LocalGrainsItems));
         this.updateMinions({"return": [allMinionsErr]});
         return false;
       });
       return true;
-    }, (pWheelKeyListAllMsg) => {
-      this._handleGrainsWheelKeyListAll(JSON.stringify(pWheelKeyListAllMsg));
+    }, (_error_WheelKeyListAll) => {
+      this._handleGrainsWheelKeyListAll(JSON.stringify(_error_WheelKeyListAll));
       Utils.ignorePromise(localGrainsItemsPromise);
       return false;
     });
@@ -87,7 +90,7 @@ export class GrainsPanel extends Panel {
       // preliminary dropdown menu
       this._addMenuItemShowGrains(minionTr.dropdownmenu, minionId);
 
-      for (let i = 0; i < this.previewGrains.length; i++) {
+      for (let i = 0; i < this.previewGrains.length; i++) { // NOSONAR S4138
         minionTr.appendChild(Utils.createTd());
       }
 
@@ -109,7 +112,7 @@ export class GrainsPanel extends Panel {
     minionTr.appendChild(Utils.createTd("saltversion"));
     minionTr.appendChild(Utils.createTd("os"));
     minionTr.appendChild(Utils.createTd("graininfo"));
-    for (let i = 0; i < this.previewGrains.length; i++) {
+    for (let i = 0; i < this.previewGrains.length; i++) { // NOSONAR S4138
       minionTr.appendChild(Utils.createTd());
     }
   }
@@ -119,53 +122,69 @@ export class GrainsPanel extends Panel {
 
     const minionTr = this.table.querySelector("#" + Utils.getIdFromMinionId(pMinionId));
 
+    GrainsPanel._addGrainInfoTd(pMinionData, minionTr);
+    this._addMenuItemShowGrains(minionTr.dropdownmenu, pMinionId);
+    this._addPreviewGrainTds(pMinionData, minionTr);
+  }
+
+  static _addGrainInfoTd (pMinionData, minionTr) {
+    const grainInfoTd = Utils.createTd();
     if (typeof pMinionData === "object") {
       const cnt = Object.keys(pMinionData).length;
       const grainInfoText = cnt + " grains";
-      const grainInfoTd = Utils.createTd("graininfo", grainInfoText);
+      grainInfoTd.classList.add("graininfo");
+      grainInfoTd.innerText = grainInfoText;
       grainInfoTd.setAttribute("sorttable_customkey", cnt);
-      minionTr.appendChild(grainInfoTd);
     } else {
-      const grainInfoTd = Utils.createTd();
       Utils.addErrorToTableCell(grainInfoTd, pMinionData);
-      minionTr.appendChild(grainInfoTd);
     }
+    minionTr.appendChild(grainInfoTd);
+  }
 
-    this._addMenuItemShowGrains(minionTr.dropdownmenu, pMinionId);
-
+  _addPreviewGrainTds (pMinionData, minionTr) {
     // add the preview columns
-    /* eslint-disable max-depth */
     for (const previewGrain of this.previewGrains) {
       const td = Utils.createTd();
       if (typeof pMinionData === "object") {
-        const previewGrainValue = previewGrain.replaceAll(/^[^=]*=/g, "");
-        if (previewGrainValue.startsWith("$")) {
-          // it is a json path
-          const obj = jsonPath(pMinionData, previewGrainValue);
-          if (Array.isArray(obj)) {
-            td.innerText = Output.formatObject(obj[0]);
-            td.classList.add("grain-value");
-          }
-        } else {
-          // a plain grain-name or a path in the grains.get style
-          const grainNames = previewGrainValue.split(":");
-          let obj = pMinionData;
-          for (const grainName of grainNames) {
-            if (obj) {
-              obj = obj[grainName];
-            }
-          }
-          if (obj) {
-            td.innerText = Output.formatObject(obj);
-            td.classList.add("grain-value");
-          }
-        }
+        GrainsPanel._populatePreviewGrainTd(td, previewGrain, pMinionData);
       } else {
         Utils.addErrorToTableCell(td, pMinionData);
       }
       minionTr.appendChild(td);
     }
-    /* eslint-enable max-depth */
+  }
+
+  static _populatePreviewGrainTd (td, previewGrain, pMinionData) {
+    const previewGrainValue = previewGrain.replace(/^[^=]*=/g, "");
+    if (previewGrainValue.startsWith("$")) {
+      // it is a json path
+      GrainsPanel._populateJsonPathGrainTd(td, previewGrainValue, pMinionData);
+    } else {
+      // a plain grain-name or a path in the grains.get style
+      GrainsPanel._populateNamedGrainTd(td, previewGrainValue, pMinionData);
+    }
+  }
+
+  static _populateJsonPathGrainTd (td, previewGrainValue, pMinionData) {
+    const obj = jsonPath(pMinionData, previewGrainValue);
+    if (Array.isArray(obj)) {
+      td.innerText = Output.formatObject(obj[0]);
+      td.classList.add("grain-value");
+    }
+  }
+
+  static _populateNamedGrainTd (td, previewGrainValue, pMinionData) {
+    const grainNames = previewGrainValue.split(":");
+    let obj = pMinionData;
+    for (const grainName of grainNames) {
+      if (obj) {
+        obj = obj[grainName];
+      }
+    }
+    if (obj) {
+      td.innerText = Output.formatObject(obj);
+      td.classList.add("grain-value");
+    }
   }
 
   _addMenuItemShowGrains (pMenu, pMinionId) {

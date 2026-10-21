@@ -1,4 +1,4 @@
-/* global Hilitor */
+/* global console document Hilitor window */
 
 import {Character} from "./Character.js";
 import {DropDownMenu} from "./DropDown.js";
@@ -6,8 +6,9 @@ import {DropDownMenu} from "./DropDown.js";
 export class Utils {
 
   // functions for URL parameters
+  // (other use is from unit tests)
 
-  static _getQueryParam2 (pUrl, pName) {
+  static getQueryParam2 (pUrl, pName) {
     const hashPos = pUrl.indexOf("#");
     if (hashPos > 0) {
       pUrl = pUrl.substring(0, hashPos);
@@ -33,26 +34,53 @@ export class Utils {
     let theWindow = null;
     try {
       theWindow = window;
-    } catch (error) {
+    } catch (err) { // eslint-disable-line no-unused-vars
       // VOID
     }
-    if (!theWindow || !theWindow.location) {
+    if (!theWindow?.location) {
       return undefined;
     }
     /* istanbul ignore next */
-    return Utils._getQueryParam2(theWindow.location.href, pName);
+    return Utils.getQueryParam2(theWindow.location.href, pName);
   }
 
   // functions for storage handling
 
+  // can be replaced with this when using ES2022
+  // static _dummyStorages = new Map();
+  static _getDummyStorages () {
+    if (!Utils._dummyStoragesMap) {
+      Utils._dummyStoragesMap = new Map();
+    }
+    return Utils._dummyStoragesMap;
+  }
+
+  static _getDummyStorage (pStorage) {
+    const storages = Utils._getDummyStorages();
+    if (!storages.has(pStorage)) {
+      storages.set(pStorage, {
+        clear () {
+          this.data = {};
+        },
+        data: {},
+        getItem (key) {
+          return this.data[key] || null;
+        },
+        removeItem (key) {
+          delete this.data[key];
+        },
+        setItem (key, value) {
+          this.data[key] = value;
+        }
+      });
+    }
+    return storages.get(pStorage);
+  }
+
   static _getStorage (pStorage) {
     // "window" is not defined during unit testing
-    try {
-      /* eslint-disable no-unused-vars */
-      const theWindow = window;
-      /* eslint-enable no-unused-vars */
-    } catch (error) {
-      return null;
+    if (typeof window === "undefined") {
+      return Utils._getDummyStorage(pStorage);
     }
     /* istanbul ignore next */
     if (pStorage === "local") {
@@ -105,7 +133,7 @@ export class Utils {
   static getStorageItemInteger (pStorage, pKeyName, pDefaultValue = 0) {
     const value = Utils.getStorageItem(pStorage, pKeyName, null);
     const obj = Number.parseInt(value, 10);
-    if (isNaN(obj)) {
+    if (Number.isNaN(obj)) {
       return pDefaultValue;
     }
     return obj;
@@ -174,7 +202,7 @@ export class Utils {
     for (let i = pToolTipHost.children.length - 1; i >= 0; i--) {
       const child = pToolTipHost.children[i];
       if (child.classList.contains("tooltip-text")) {
-        pToolTipHost.removeChild(child);
+        child.remove();
       }
     }
 
@@ -199,6 +227,8 @@ export class Utils {
     // show representation of the object
     if (typeof pErrorMessage === "object") {
       pErrorMessage = JSON.stringify(pErrorMessage);
+    } else if (pErrorMessage === false) {
+      pErrorMessage = "minion probably not reachable";
     }
 
     // the TD may contain text such as "loading...", clear that first
@@ -234,7 +264,10 @@ export class Utils {
       return 0;
     }
 
-    let textValue = pElement.textContent;
+    return Utils._checkTextMatch(pElement.textContent, pSearchText, pCaseSensitiveFlag);
+  }
+
+  static _checkTextMatch (textValue, pSearchText, pCaseSensitiveFlag) {
     if (typeof pSearchText === "string") {
       if (!pCaseSensitiveFlag) {
         textValue = textValue.toUpperCase();
@@ -253,7 +286,7 @@ export class Utils {
   static makeSearchBox (pSearchButton, pTable, pFieldList = null) {
 
     const div = Utils.createDiv("search-box", "");
-    div.style.display = "none";
+    div.classList.add("hidden");
 
     const menuAndFieldDiv = Utils.createDiv("search-menu-and-field", "");
 
@@ -360,21 +393,32 @@ export class Utils {
     };
 
     pTable.parentElement.insertBefore(pSearchBlock, pTable);
-    if (pAction === "refresh" && pSearchBlock.style.display === "none") {
+    if (pAction === "refresh" && pSearchBlock.classList.contains("hidden")) {
       Utils._updateTableFilter(pTable, "", menuItems);
     } else if (pAction === "refresh") {
       Utils._updateTableFilter(pTable, input.value, menuItems);
     } else if (pAction === "hide") {
+      pSearchBlock.style.transition = "max-height 0.3s ease, opacity 0.3s ease";
+      // accessing offsetHeight forces a reflow so the transition animates properly
+      pSearchBlock.offsetHeight;
+      pSearchBlock.classList.add("hidden");
       Utils._updateTableFilter(pTable, "", menuItems);
-      pSearchBlock.style.display = "none";
-    } else if (pSearchBlock.style.display === "none") {
+    } else if (pSearchBlock.classList.contains("hidden")) {
+      pSearchBlock.style.transition = "max-height 0.6s ease, opacity 0.6s ease";
+      // accessing offsetHeight forces a reflow so the transition animates properly
+      pSearchBlock.offsetHeight;
+      pSearchBlock.classList.remove("hidden");
       Utils._updateTableFilter(pTable, input.value, menuItems);
-      pSearchBlock.style.display = "";
-    } else {
+    } else { // NOSONAR S1871
+      pSearchBlock.style.transition = "max-height 0.3s ease, opacity 0.3s ease";
+      // accessing offsetHeight forces a reflow so the transition animates properly
+      pSearchBlock.offsetHeight;
+      pSearchBlock.classList.add("hidden");
       Utils._updateTableFilter(pTable, "", menuItems);
-      pSearchBlock.style.display = "none";
     }
-    input.focus();
+    if (!pSearchBlock.classList.contains("hidden")) {
+      input.focus();
+    }
   }
 
   static _updateTableFilter (pTable, pSearchText, pMenuItems) {
@@ -384,6 +428,39 @@ export class Utils {
     const hilitor = new Hilitor(pTable, searchInSelector);
     hilitor.remove();
 
+    const flags = Utils._extractSearchFlags(pMenuItems, pSearchText);
+
+    // find text
+    if (!flags.caseSensitiveFlag && !flags.regExpFlag) {
+      pSearchText = pSearchText.toUpperCase();
+    }
+
+    const errorBox = pTable.parentElement.querySelector(".search-error");
+    errorBox.style.display = "none";
+    errorBox.style.color = "";
+
+    const regexp = Utils._compileSearchRegex(pSearchText, flags.caseSensitiveFlag, flags.regExpFlag, errorBox);
+    if (regexp?.error) {
+      return;
+    }
+
+    const searchParam = flags.regExpFlag ? regexp : pSearchText;
+    const matchInfo = Utils._processSearchBlocks(pTable, searchParam, flags.caseSensitiveFlag, flags.invertFlag);
+
+    if (Utils._showSearchMessages(errorBox, flags.invertFlag, pSearchText, matchInfo)) {
+      return;
+    }
+
+    // show the result
+    hilitor.setMatchType("open");
+    hilitor.setEndRegExp(/^$/);
+    hilitor.setBreakRegExp(/^$/);
+
+    const pattern = Utils._buildHighlightPattern(pSearchText, flags.regExpFlag);
+    hilitor.apply(pattern, flags.caseSensitiveFlag);
+  }
+
+  static _extractSearchFlags (pMenuItems, pSearchText) {
     // values may be undefined, so convert to proper boolean
     const caseSensitiveFlag = pMenuItems.childNodes[0]._value === true;
     const regExpFlag = pMenuItems.childNodes[1]._value === true;
@@ -394,91 +471,114 @@ export class Utils {
       invertFlag = false;
     }
 
-    // find text
-    if (!caseSensitiveFlag && !regExpFlag) {
-      pSearchText = pSearchText.toUpperCase();
+    return {caseSensitiveFlag, invertFlag, regExpFlag};
+  }
+
+  static _compileSearchRegex (pSearchText, pCaseSensitiveFlag, pRegExpFlag, pErrorBox) {
+    if (!pRegExpFlag) {
+      return null;
     }
 
-    let regexp;
-
-    const errorBox = pTable.parentElement.querySelector(".search-error");
-    if (regExpFlag) {
-      try {
-        regexp = new RegExp(pSearchText, caseSensitiveFlag ? "" : "i");
-      } catch (err) {
-        errorBox.innerText = err.message;
-        errorBox.style.display = "";
-        return;
-      }
+    try {
+      return new RegExp(pSearchText, pCaseSensitiveFlag ? "" : "i");
+    } catch (err) {
+      pErrorBox.innerText = Character.WARNING_SIGN + err.message;
+      pErrorBox.style.display = "";
+      return {error: true};
     }
-    errorBox.style.display = "none";
+  }
 
-    const searchParam = regExpFlag ? regexp : pSearchText;
+  static _processSearchBlocks (pTable, pSearchParam, pCaseSensitiveFlag, pInvertFlag) {
     let hasEmptyMatches = false;
     let hasNonEmptyMatches = false;
     const blocks = pTable.tagName === "TABLE" ? pTable.tBodies[0].rows : pTable.children;
+
     for (const block of blocks) {
       if (block.classList.contains("no-search")) {
         // e.g. first row of output-panel
         continue;
       }
-      let show = false;
-      const items = block.tagName === "TR" ? block.cells : [block];
-      for (const cell of items) {
-        // do not use "innerText"
-        // that one does not handle hidden text
-        const res = Utils._hasTextContent(cell, searchParam, caseSensitiveFlag);
-        if (res === 1) {
-          hasNonEmptyMatches = true;
-        }
-        if (res === 2) {
-          hasEmptyMatches = true;
-        }
-        // don't exit the loop, there might also be empty matches
-        if (res) {
-          show = true;
-        }
-      }
-      if (invertFlag) {
+
+      const cellResult = Utils._checkBlockCells(block, pSearchParam, pCaseSensitiveFlag);
+      hasEmptyMatches = hasEmptyMatches || cellResult.hasEmptyMatches;
+      hasNonEmptyMatches = hasNonEmptyMatches || cellResult.hasNonEmptyMatches;
+
+      let show = cellResult.matches;
+      if (pInvertFlag) {
         show = !show;
       }
-      if (show) {
-        block.classList.remove("no-filter-match");
-      } else {
-        block.classList.add("no-filter-match");
+      Utils._updateBlockVisibility(block, show);
+    }
+
+    return {hasEmptyMatches, hasNonEmptyMatches};
+  }
+
+  static _checkBlockCells (pBlock, pSearchParam, pCaseSensitiveFlag) {
+    let hasEmptyMatches = false;
+    let hasNonEmptyMatches = false;
+    let matches = false;
+
+    const items = pBlock.tagName === "TR" ? pBlock.cells : [pBlock];
+    for (const cell of items) {
+      // do not use "innerText"
+      // that one does not handle hidden text
+      const res = Utils._hasTextContent(cell, pSearchParam, pCaseSensitiveFlag);
+      if (res === 1) {
+        hasNonEmptyMatches = true;
+      }
+      if (res === 2) {
+        hasEmptyMatches = true;
+      }
+      // don't exit the loop, there might also be empty matches
+      if (res) {
+        matches = true;
       }
     }
-    if (pSearchText && hasEmptyMatches) {
-      const indicator = hasNonEmptyMatches ? "also" : "only";
-      errorBox.innerText = "warning: there were " + indicator + " empty matches, highlighting is not performed";
-      errorBox.style.display = "";
-      return;
-    }
 
-    // show the result
-    hilitor.setMatchType("open");
-    hilitor.setEndRegExp(/^$/);
-    hilitor.setBreakRegExp(/^$/);
+    return {hasEmptyMatches, hasNonEmptyMatches, matches};
+  }
 
-    let pattern;
-    if (regExpFlag) {
-      pattern = pSearchText;
+  static _updateBlockVisibility (pBlock, pShow) {
+    if (pShow) {
+      pBlock.classList.remove("no-filter-match");
     } else {
-      // turn the text into a regexp
-      pattern = "";
-      for (const chr of pSearchText) {
-        // prevent accidental construction of character classes
-        /* eslint-disable no-extra-parens */
-        if ((chr >= "A" && chr <= "Z") || (chr >= "a" && chr <= "z") || (chr >= "0" && chr <= "9")) {
-          pattern += chr;
-        } else {
-          pattern += "\\" + chr;
-        }
-        /* eslint-enable no-extra-parens */
-      }
+      pBlock.classList.add("no-filter-match");
+    }
+  }
+
+  static _showSearchMessages (pErrorBox, pInvertFlag, pSearchText, pMatchInfo) {
+    if (pInvertFlag) {
+      pErrorBox.innerText = Character.CIRCLED_INFORMATION_SOURCE + Character.NO_BREAK_SPACE + "with 'Invert search', highlighting is never visible";
+      pErrorBox.style.display = "";
+      pErrorBox.style.color = "inherit";
+    } else if (pSearchText && pMatchInfo.hasEmptyMatches) {
+      const indicator = pMatchInfo.hasNonEmptyMatches ? "also" : "only";
+      pErrorBox.innerText = Character.WARNING_SIGN + Character.NO_BREAK_SPACE + "there were " + indicator + " empty matches, highlighting is not performed";
+      pErrorBox.style.display = "";
+      pErrorBox.style.color = "inherit";
+      return true;
+    }
+    return false;
+  }
+
+  static _buildHighlightPattern (pSearchText, pRegExpFlag) {
+    if (pRegExpFlag) {
+      return pSearchText;
     }
 
-    hilitor.apply(pattern, caseSensitiveFlag);
+    // turn the text into a regexp
+    let pattern = "";
+    for (const chr of pSearchText) {
+      // prevent accidental construction of character classes
+      /* eslint-disable no-extra-parens */
+      if ((chr >= "A" && chr <= "Z") || (chr >= "a" && chr <= "z") || (chr >= "0" && chr <= "9")) {
+        pattern += chr;
+      } else {
+        pattern += "\\" + chr;
+      }
+      /* eslint-enable no-extra-parens */
+    }
+    return pattern;
   }
 
   static txtZeroOneMany (pCnt, pZeroText, pOneText, pManyText) {
@@ -498,11 +598,10 @@ export class Utils {
 
   // MinionIds cannot directly be used as IDs for HTML elements
   // the id may contain characters that are not allowed in an ID
-  // btoa is the base64 encoder
+  // btoa (the base64 encoder) uses +, / and = which are not valid in CSS selectors
+  // use base64url (RFC 4648 §5): replace + with -, / with _, strip padding =
   static getIdFromMinionId (pMinionId) {
-    // prevent eslint: A regular expression literal can be confused with '/='
-    const patEqualSigns = /[=]=*/;
-    return "m" + window.btoa(pMinionId).replace(patEqualSigns, "");
+    return "m" + window.btoa(pMinionId).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   }
 
   // JobIds are in the format 20190529175411210984
@@ -629,10 +728,10 @@ export class Utils {
     if (!pItem) {
       return true;
     }
-    if (pAllowList && pAllowList.length > 0) {
+    if (pAllowList?.length > 0) {
       return pAllowList.includes(pItem);
     }
-    if (pDenyList && pDenyList.length > 0) {
+    if (pDenyList?.length > 0) {
       return !pDenyList.includes(pItem);
     }
     return true;
@@ -657,7 +756,7 @@ export class Utils {
     if (pKeyUpEvent.metaKey) {
       return false;
     }
-    if (pKeyUpEvent.shiftKey) {
+    if (pKeyUpEvent.shiftKey && (pKeyUpEvent.altKey || pKeyUpEvent.ctrlKey || pKeyUpEvent.metaKey)) {
       return false;
     }
     if (pKeyUpEvent.isComposing) {
@@ -672,5 +771,18 @@ export class Utils {
       return false;
     }
     return true;
+  }
+
+  static escapeHtml (unsafe) {
+    return unsafe
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  static mySortFunction (aa, bb) {
+    return aa.localeCompare(bb, "en", {"numeric": true});
   }
 }

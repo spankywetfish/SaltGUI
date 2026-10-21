@@ -1,4 +1,5 @@
 import {Character} from "../Character.js";
+import {Utils} from "../Utils.js";
 
 export class OutputNested {
 
@@ -9,7 +10,52 @@ export class OutputNested {
     return " ".repeat(pIndent) + pPrefix + pTxt + pSuffix;
   }
 
-  static display (pValue, pIndent, pPrefix, pOutArray) {
+  static _displayString (pValue, pIndent, pPrefix, pOutArray) {
+    let isFirstLine = true;
+    pValue = pValue.replace(/\n$/, "");
+    for (const line of pValue.split("\n")) {
+      let linePrefix = pPrefix;
+      if (!isFirstLine) {
+        linePrefix = " ".repeat(pPrefix.length);
+      }
+      pOutArray.push(OutputNested._ustring(pIndent, line, linePrefix));
+      isFirstLine = false;
+    }
+  }
+
+  static _displayArray (pValue, pIndent, pOutArray) {
+    for (const ind of pValue) {
+      if (typeof ind === "object") {
+        // including array
+        pOutArray.push(OutputNested._ustring(pIndent, "|_"));
+        let prefix;
+        if (Array.isArray(ind)) {
+          prefix = "-" + Character.NO_BREAK_SPACE;
+        } else {
+          prefix = "";
+        }
+        OutputNested._display(ind, pIndent + 2, prefix, pOutArray);
+      } else {
+        OutputNested._display(ind, pIndent, "-" + Character.NO_BREAK_SPACE, pOutArray);
+      }
+    }
+  }
+
+  static _displayObject (pValue, pIndent, pPrefix, pOutArray) {
+    if (pIndent) {
+      pOutArray.push(OutputNested._ustring(pIndent, "----------"));
+    }
+    const sortedKeys = Object.keys(pValue).sort(Utils.mySortFunction);
+    for (const key of sortedKeys) {
+      const val = pValue[key];
+      pOutArray.push(OutputNested._ustring(pIndent, key, pPrefix, ":"));
+      if (val !== null && val !== "") {
+        OutputNested._display(val, pIndent + 4, "", pOutArray);
+      }
+    }
+  }
+
+  static _display (pValue, pIndent, pPrefix, pOutArray) {
     if (pValue === null) {
       pOutArray.push(OutputNested._ustring(pIndent, "None", pPrefix));
     } else if (pValue === undefined) {
@@ -17,54 +63,17 @@ export class OutputNested {
     } else if (typeof pValue === "boolean" || typeof pValue === "number") {
       pOutArray.push(OutputNested._ustring(pIndent, pValue, pPrefix));
     } else if (typeof pValue === "string") {
-      let isFirstLine = true;
-      pValue = pValue.replace(/\n$/, "");
-      for (const line of pValue.split("\n")) {
-        let linePrefix = pPrefix;
-        if (!isFirstLine) {
-          linePrefix = " ".repeat(pPrefix.length);
-        }
-        pOutArray.push(OutputNested._ustring(pIndent, line, linePrefix));
-        isFirstLine = false;
-      }
-    } else if (typeof pValue === "object" && Array.isArray(pValue)) {
-      for (const ind of pValue) {
-        if (typeof ind === "object") {
-          // including array
-          pOutArray.push(OutputNested._ustring(pIndent, "|_"));
-          let prefix;
-          if (Array.isArray(ind)) {
-            prefix = "-" + Character.NO_BREAK_SPACE;
-          } else {
-            prefix = "";
-          }
-          OutputNested.display(ind, pIndent + 2, prefix, pOutArray);
-        } else {
-          OutputNested.display(ind, pIndent, "-" + Character.NO_BREAK_SPACE, pOutArray);
-        }
-      }
+      OutputNested._displayString(pValue, pIndent, pPrefix, pOutArray);
+    } else if (Array.isArray(pValue)) {
+      OutputNested._displayArray(pValue, pIndent, pOutArray);
     } else if (typeof pValue === "object") {
-      if (pIndent) {
-        pOutArray.push(OutputNested._ustring(pIndent, "----------"));
-      }
-      const sortedKeys = Object.keys(pValue).sort((aa, bb) => aa.localeCompare(bb, "en", {"numeric": true}));
-      for (const key of sortedKeys) {
-        const val = pValue[key];
-        pOutArray.push(OutputNested._ustring(pIndent, key, pPrefix, ":"));
-        if (val === null) {
-          // VOID
-        } else if (val === "") {
-          // VOID
-        } else {
-          OutputNested.display(val, pIndent + 4, "", pOutArray);
-        }
-      }
+      OutputNested._displayObject(pValue, pIndent, pPrefix, pOutArray);
     }
     return pOutArray;
   }
 
   static formatNESTED (pValue, pIndentLevel = 0) {
-    const lines = OutputNested.display(pValue, pIndentLevel, "", []);
+    const lines = OutputNested._display(pValue, pIndentLevel, "", []);
     return lines.join("\n");
   }
 

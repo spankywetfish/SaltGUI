@@ -1,6 +1,40 @@
 import {Character} from "../Character.js";
+import {Utils} from "../Utils.js";
 
 export class OutputYaml {
+
+  static _stringNeedsQuotes (pValue) {
+    // simple number with extra 0's at the start is still a string
+    if (/^0[0-9]+$/.test(pValue)) { // NOSONAR S6353
+      return true;
+    }
+
+    if (!Number.isNaN(Number(pValue))) {
+      return true;
+    }
+
+    if (pValue === "") {
+      return true;
+    }
+
+    if (pValue.startsWith(" ") || pValue.endsWith(" ")) {
+      return true;
+    }
+
+    if (pValue.startsWith("@") || pValue.startsWith("`") || pValue.startsWith("%")) {
+      return true;
+    }
+
+    if (/'/.test(pValue)) {
+      return true;
+    }
+
+    if (!/^[-a-z0-9_()./:+ ]+$/i.test(pValue)) {
+      return true;
+    }
+
+    return false;
+  }
 
   // format an object as YAML
   // returns NULL when it is not a simple object
@@ -20,49 +54,10 @@ export class OutputYaml {
     }
 
     if (typeof pValue === "string") {
-      let needQuotes = false;
-
-      // simple number with extra 0's at the start is still a string
-      if (pValue.match(/^0[0-9]+$/)) {
-        needQuotes = true;
-      }
-
-      if (!isNaN(Number(pValue))) {
-        needQuotes = true;
-      }
-
-      if (pValue.match(/^$/)) {
-        needQuotes = true;
-      }
-
-      if (pValue.match(/^ /)) {
-        needQuotes = true;
-      }
-      if (pValue.match(/ $/)) {
-        needQuotes = true;
-      }
-
-      if (pValue.match(/^@/)) {
-        needQuotes = true;
-      }
-      if (pValue.match(/^`/)) {
-        needQuotes = true;
-      }
-      if (pValue.match(/'/)) {
-        needQuotes = true;
-      }
-      if (pValue.match(/^%/)) {
-        needQuotes = true;
-      }
-
-      if (!pValue.match(/^[-a-z0-9_()./:+ ]+$/i)) {
-        needQuotes = true;
-      }
-
-      if (!needQuotes) {
+      if (!OutputYaml._stringNeedsQuotes(pValue)) {
         return pValue;
       }
-      return "'" + pValue.replace(/['\\]/g, "\\$&") + "'";
+      return "'" + pValue.replace(/['\\]/g, "\\$&") + "'"; // NOSONAR S7780
     }
 
     if (typeof pValue !== "object") {
@@ -109,7 +104,7 @@ export class OutputYaml {
     // regular object
     let oOut = "";
     let oSeparator = "";
-    const sortedKeys = Object.keys(pValue).sort((aa, bb) => aa.localeCompare(bb, "en", {"numeric": true}));
+    const sortedKeys = Object.keys(pValue).sort(Utils.mySortFunction);
     for (const key of sortedKeys) {
       const item = pValue[key];
       oOut += oSeparator + key + ":";

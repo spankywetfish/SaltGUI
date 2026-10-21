@@ -1,4 +1,4 @@
-/* global */
+/* global document */
 
 import {BeaconsPanel} from "./Beacons.js";
 import {Character} from "../Character.js";
@@ -38,6 +38,7 @@ export class BeaconsMinionPanel extends Panel {
 
   onShow () {
     this.nrBeacons = 0;
+    this.missedEvents = 0;
 
     const minionId = decodeURIComponent(Utils.getQueryParam("minionid"));
 
@@ -46,11 +47,11 @@ export class BeaconsMinionPanel extends Panel {
 
     const localBeaconsListPromise = this.api.getLocalBeaconsList(minionId);
 
-    localBeaconsListPromise.then((pLocalBeaconsListData) => {
-      this._handleLocalBeaconsList(pLocalBeaconsListData, minionId);
+    localBeaconsListPromise.then((ok_LocalBeaconsList) => {
+      this._handleLocalBeaconsList(ok_LocalBeaconsList, minionId);
       return true;
-    }, (pLocalBeaconsListMsg) => {
-      this._handleLocalBeaconsList(JSON.stringify(pLocalBeaconsListMsg), minionId);
+    }, (_error_LocalBeaconsList) => {
+      this._handleLocalBeaconsList(JSON.stringify(_error_LocalBeaconsList), minionId);
       return false;
     });
 
@@ -63,12 +64,12 @@ export class BeaconsMinionPanel extends Panel {
       // yes, we want the list from *all* minions
       const localBeaconsListAvailablePromise = pApi.getLocalBeaconsListAvailable(null);
 
-      localBeaconsListAvailablePromise.then((pLocalBeaconsListAvailableData) => {
-        BeaconsMinionPanel._handleBeaconsListAvailable(pLocalBeaconsListAvailableData);
+      localBeaconsListAvailablePromise.then((ok_LocalBeaconsListAvailable) => {
+        BeaconsMinionPanel._handleBeaconsListAvailable(ok_LocalBeaconsListAvailable);
         return true;
-      }, (pLocalBeaconsListAvailableMsg) => {
+      }, (_error_LocalBeaconsListAvailable) => {
         // pretend nothing is available
-        Utils.warn("cannot retrieve beacons.list_available:", pLocalBeaconsListAvailableMsg);
+        Utils.warn("cannot retrieve beacons.list_available:", _error_LocalBeaconsListAvailable);
         Utils.setStorageItem("session", "beacons_list_available", "{\"_cnt\": 0}");
         return false;
       });
@@ -104,9 +105,14 @@ export class BeaconsMinionPanel extends Panel {
   }
 
   updateFooter () {
-    // update the footer
-    const txt = Utils.txtZeroOneMany(this.nrBeacons, "No beacons", "{0} beacon", "{0} beacons");
-    this.setMsg(txt);
+    let txt = Utils.txtZeroOneMany(this.nrBeacons, "No beacons", "{0} beacon", "{0} beacons");
+    if (this.playOrPause === "pause" && this.missedEvents > 0) {
+      txt += ", " + Utils.txtZeroOneMany(this.missedEvents, "", "{0} missed event", "{0} missed events");
+    }
+    super.updateFooter(txt);
+    if (this.playOrPause === "play") {
+      this.missedEvents = 0;
+    }
   }
 
   _handleLocalBeaconsList (pLocalBeaconsListData, pMinionId) {
@@ -128,20 +134,20 @@ export class BeaconsMinionPanel extends Panel {
 
     this.beaconsEnabled = beacons.enabled;
 
-    if (beacons && beacons.enabled === false) {
+    if (beacons?.enabled === false) {
       this.updateTitle("Beacons on " + pMinionId + " (disabled)");
     }
 
     if (beacons === undefined) {
-      this.setMsg("Unknown minion '" + pMinionId + "'");
+      this.setMsgTxt("Unknown minion '" + pMinionId + "'");
       return;
     }
     if (beacons === false) {
-      this.setMsg("Minion '" + pMinionId + "' did not answer");
+      this.setMsgTxt("Minion '" + pMinionId + "' did not answer");
       return;
     }
 
-    const keys = Object.keys(beacons.beacons).sort();
+    const keys = Object.keys(beacons.beacons).sort(Utils.mySortFunction);
     for (const beaconName of keys) {
       const tr = Utils.createTr("", "", "beacon-" + beaconName);
 
@@ -295,10 +301,6 @@ export class BeaconsMinionPanel extends Panel {
   }
 
   handleSaltBeaconEvent (pTag, pData) {
-    if (this.playOrPause !== "play") {
-      return;
-    }
-
     const minionId = decodeURIComponent(Utils.getQueryParam("minionid"));
     const prefix = "salt/beacon/" + minionId + "/";
     if (!pTag.startsWith(prefix)) {
@@ -310,6 +312,12 @@ export class BeaconsMinionPanel extends Panel {
     const tr = document.getElementById("beacon-" + beaconName);
     if (tr === null) {
       // beacon was unknown when the screen was created
+      return;
+    }
+
+    if (this.playOrPause !== "play") {
+      this.missedEvents += 1;
+      this.updateFooter();
       return;
     }
 
@@ -338,6 +346,26 @@ export class BeaconsMinionPanel extends Panel {
     // original: yyyy-mm-ddThh:mm:ss.ssssss
     stamp = stamp.substring(0, 21);
 
+    const searchBlock = this.div.querySelector(".search-box");
+    Utils.hideShowTableSearchBar(searchBlock, this.table, "refresh");
+
+    const helpText = BeaconsMinionPanel._determineBeaconHelpText(tr, stamp, pTag, pData);
+
+    if (helpText) {
+      Utils.addToolTip(tr.helpButtonSpan, helpText, "bottom-right");
+      tr.helpButtonSpan.style.display = "";
+    } else {
+      tr.helpButtonSpan.style.display = "none";
+    }
+
+    tr.beaconValueTd.innerText = value;
+
+    tr.prevStamp = stamp;
+    tr.prevTag = pTag;
+    tr.prevData = pData;
+  }
+
+  static _determineBeaconHelpText (tr, stamp, pTag, pData) {
     // when the warning-line has been shown, then from then on,
     // show an empty line when there is no warning.
     // this prevents a jumpy screen, while preserving space with
@@ -355,25 +383,11 @@ export class BeaconsMinionPanel extends Panel {
       // duplicate of previous event, never mind for now
     }
 
-    const searchBlock = this.div.querySelector(".search-box");
-    Utils.hideShowTableSearchBar(searchBlock, this.table, "refresh");
-
     if (pData["error"]) {
       // we might be replacing a "multiple-events" warning here
       helpText = "The beacon reported an error";
     }
 
-    if (helpText) {
-      Utils.addToolTip(tr.helpButtonSpan, helpText, "bottom-right");
-      tr.helpButtonSpan.style.display = "";
-    } else {
-      tr.helpButtonSpan.style.display = "none";
-    }
-
-    tr.beaconValueTd.innerText = value;
-
-    tr.prevStamp = stamp;
-    tr.prevTag = pTag;
-    tr.prevData = pData;
+    return helpText;
   }
 }

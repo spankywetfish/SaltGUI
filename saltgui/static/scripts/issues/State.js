@@ -23,27 +23,25 @@ export class StateIssues extends Issues {
 
     const runnerJobsListJobsPromise = this.api.getRunnerJobsListJobs(["state.apply", "state.highstate", "state.sls_id"]);
 
-    wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
-      runnerJobsListJobsPromise.then((pRunnerJobsListJobsData) => {
-        Issues.removeCategory(pPanel, "state");
-        this._handleLowstateRunnerJobsListJobs(pPanel, pRunnerJobsListJobsData, pWheelKeyListAllData, msg);
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      runnerJobsListJobsPromise.then((ok_RunnerJobsListJobs) => {
+        this.removeCategory("state");
+        this._handleLowstateRunnerJobsListJobs(pPanel, ok_RunnerJobsListJobs, ok_WheelKeyListAll, msg);
         return true;
-      }, (pRunnerJobsListJobsMsg) => {
-        Issues.removeCategory(pPanel, "state");
-        const tr = Issues.addIssue(pPanel, "state", "retrieving");
-        Issues.addIssueMsg(tr, "Could not retrieve list of jobs");
-        Issues.addIssueErr(tr, pRunnerJobsListJobsMsg);
-        Issues.readyCategory(pPanel, msg);
+      }, (_error_RunnerJobsListJobs) => {
+        this.removeCategory("state");
+        this.setIssueMsg("state", "retrieving", "Could not retrieve list of jobs");
+        this.setIssueErr("state", "retrieving", _error_RunnerJobsListJobs);
+        this.readyCategory(pPanel, "state", msg);
         return false;
       });
       return true;
-    }, (pWheelKeyListAllMsg) => {
+    }, (_error_WheelKeyListAll) => {
       Utils.ignorePromise(runnerJobsListJobsPromise);
-      Issues.removeCategory(pPanel, "state");
-      const tr = Issues.addIssue(pPanel, "state", "retrieving");
-      Issues.addIssueMsg(tr, "Could not retrieve list of keys");
-      Issues.addIssueErr(tr, pWheelKeyListAllMsg);
-      Issues.readyCategory(pPanel, msg);
+      this.removeCategory("state");
+      this.setIssueMsg("state", "retrieving", "Could not retrieve list of keys");
+      this.setIssueErr("state", "retrieving", _error_WheelKeyListAll);
+      this.readyCategory(pPanel, "state", msg);
       return false;
     });
 
@@ -54,105 +52,102 @@ export class StateIssues extends Issues {
   }
 
   _handleLowstateRunnerJobsListJobs (pPanel, pData, pKeys, pMsg) {
-    // due to filter, all jobs are state.apply jobs
+    // due to filter, all jobs are state jobs
 
     pKeys = pKeys.return[0].data.return.minions;
 
-    let jobs = JobsPanel._jobsToArray(pData.return[0]);
-    JobsPanel._sortJobs(jobs);
+    let jobs = JobsPanel.jobsToArray(pData.return[0]);
+    JobsPanel.sortJobs(jobs);
 
     if (jobs.length > MAX_HIGHSTATE_JOBS) {
       jobs = jobs.slice(0, MAX_HIGHSTATE_JOBS);
     }
 
-    pPanel.jobs = jobs;
-    // this is good only while "State" is the only issue-provider that uses play/pause
-    pPanel.setPlayPauseButton(jobs.length === 0 ? "none" : "play");
+    // the jobs are sorted newest-first, but they must be handled
+    // oldest-first, so that a problem that was solved in a later
+    // job is removed again from the list of issues
+    jobs.reverse();
 
-    this._updateNextJob(pPanel, pMsg, pKeys);
+    this.panel = pPanel;
+    this.jobs = jobs;
+    this.msg = pMsg;
+    this.keys = pKeys;
+
+    // this is good only while "State" is the only issue-provider that uses play/pause
+    pPanel.startLoop(this, 100);
   }
 
-  _updateNextJob (pPanel, pMsg, pKeys) {
-    if (!pPanel.jobs) {
-      return;
-    }
-    if (!pPanel.jobs.length) {
-      // this is good only while "State" is the only issue-provider
-      pPanel.setPlayPauseButton("none");
-      pPanel.jobs = null;
-      Issues.readyCategory(pPanel, pMsg);
-      return;
-    }
+  loopInit () {
+    return this.jobs;
+  }
 
-    if (pPanel.playOrPause !== "play") {
-      pPanel.issuesStateTimeout = window.setTimeout(() => {
-        pPanel.issuesStateTimeout = null;
-        this._updateNextJob(pPanel, pMsg, pKeys);
-      }, 1000);
-      return;
-    }
+  loopItem (pJob) {
+    const runnerJobsListJobPromise = this.api.getRunnerJobsListJob(pJob.id);
 
-    const job = pPanel.jobs.pop();
-
-    const runnerJobsListJobPromise = this.api.getRunnerJobsListJob(job.id);
-
-    runnerJobsListJobPromise.then((pRunnerJobsListJobData) => {
-      StateIssues._handleJobRunnerJobsListJob(pPanel, pRunnerJobsListJobData, pKeys);
-      pPanel.issuesStateTimeout = window.setTimeout(() => {
-        pPanel.issuesStateTimeout = null;
-        this._updateNextJob(pPanel, pMsg, pKeys);
-      }, 100);
+    return runnerJobsListJobPromise.then((ok_RunnerJobsListJob) => {
+      this._handleJobRunnerJobsListJob(ok_RunnerJobsListJob, this.keys);
       return true;
-    }, (pRunnerJobsListJobsMsg) => {
-      const tr = Issues.addIssue(pPanel, "state", "retrieving");
-      Issues.addIssueMsg(tr, "Could not retrieve details of job " + job.id);
-      Issues.addIssueErr(tr, pRunnerJobsListJobsMsg);
+    }, (_error_RunnerJobsListJobs) => {
+      this.setIssueMsg("state", "retrieving", "Could not retrieve details of job " + pJob.id);
+      this.setIssueErr("state", "retrieving", _error_RunnerJobsListJobs);
+      // the remaining jobs will fail just the same
       return false;
     });
   }
 
-  static _handleJobRunnerJobsListJob (pPanel, pJobData, pKeys) {
+  loopEnd () {
+    this.readyCategory(this.panel, "state", this.msg);
+  }
+
+  _handleJobRunnerJobsListJob (pJobData, pKeys) {
     const jobData = pJobData.return[0];
 
     for (const minionId in jobData.Result) {
 
-      if (pKeys.indexOf(minionId) < 0) {
+      if (!pKeys.includes(minionId)) {
         // this is no longer a valid minion
         continue;
       }
 
       const minionData = jobData.Result[minionId];
-      if (minionData.out !== "highstate") {
-        // never mind
+      this._handleMinionStates(jobData, minionId, minionData);
+    }
+  }
+
+  _handleMinionStates (pJobData, pMinionId, pMinionData) {
+    if (pMinionData.out !== "highstate") {
+      // never mind
+      return;
+    }
+
+    // the complicating factor is that each state may have multiple tasks
+    for (const stateName in pMinionData.return) {
+      const stateData = pMinionData.return[stateName];
+      if (typeof stateData !== "object") {
+        // e.g. an error string
         continue;
       }
+      const key = pMinionId + "-" + stateData.__sls__ + "-" + stateData.__id__ + "-" + stateData.__run_num__;
+      this._handleStateIssue(pJobData, pMinionId, stateData, key);
+    }
+  }
 
-      // the complicating factor is that each state may have multiple tasks
-      for (const stateName in minionData.return) {
-        const stateData = minionData.return[stateName];
-        if (typeof stateData !== "object") {
-          // e.g. an error string
-          continue;
-        }
-        const key = minionId + "-" + stateData.__sls__ + "-" + stateData.__id__ + "-" + stateData.__run_num__;
-        if (stateData.result === true) {
-          // problem solved in a later execution
-          Issues.removeIssue(pPanel, "state", key);
-          continue;
-        }
-        if (stateData.__sls__ && stateData.__id__ && stateData.__run_num__ !== undefined) {
-          const tr = Issues.addIssue(pPanel, "state", key);
-          Issues.addIssueMsg(tr, "State '" + stateData.__sls__ + "/" + stateData.__id__ + "/" + stateData.__run_num__ + "' on '" + minionId + "' failed");
-          // note that all tasks from the state are applied again, not only the failed ones
-          Issues.addIssueCmd(tr, "Apply state", minionId, ["state.sls_id", stateData.__id__, "mods=", stateData.__sls__]);
-          Issues.addIssueNav(tr, "job", {"id": jobData.jid, "minionid": minionId});
-        } else if (stateData.__id__) {
-          // really old minions do not fill __sls__
-          const tr = Issues.addIssue(pPanel, "state", key);
-          Issues.addIssueMsg(tr, "State '" + stateData.__id__ + "' on '" + minionId + "' failed");
-          Issues.addIssueNav(tr, "job", {"id": jobData.jid, "minionid": minionId});
-        }
-      }
+  _handleStateIssue (pJobData, pMinionId, pStateData, pKey) {
+    if (pStateData.result === true) {
+      // problem solved in a later execution
+      this.removeIssue("state", pKey);
+      return;
+    }
+
+    if (pStateData.__sls__ && pStateData.__id__ && pStateData.__run_num__ !== undefined) {
+      this.setIssueMsg("state", pKey, "State '" + pStateData.__sls__ + "/" + pStateData.__id__ + "/" + pStateData.__run_num__ + "' on '" + pMinionId + "' failed");
+      // note that all tasks from the state are applied again, not only the failed ones
+      this.addIssueCmd("state", pKey, "Apply state", pMinionId, ["state.sls_id", pStateData.__id__, "mods=", pStateData.__sls__]);
+      this.addIssueNav("state", pKey, "job", {"id": pJobData.jid, "minionid": pMinionId});
+    } else if (pStateData.__id__) {
+      // really old minions do not fill __sls__
+      this.setIssueMsg("state", pKey, "State '" + pStateData.__id__ + "' on '" + pMinionId + "' failed");
+      this.addIssueNav("state", pKey, "job", {"id": pJobData.jid, "minionid": pMinionId});
     }
   }
 }

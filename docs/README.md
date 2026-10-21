@@ -1,6 +1,10 @@
 # SaltGUI
 
-SaltGUI is an open source web interface for managing a SaltStack server and its minions. Built using vanilla ES6 and implemented as a wrapper around the rest_cherrypy server a.k.a. salt-api.
+**ALERT: SaltGUI does not work with SALT 3008.0 or 3008.1 as these releases are broken. 3008.2 is mostly ok. See below for details. **
+
+SaltGUI is an open source web interface for managing a SaltStack server and its minions. Built using plain ES2021 and implemented as a wrapper around the rest_cherrypy server a.k.a. salt-api.
+
+**Security Note**: For production deployments, TLS encryption is strongly recommended. See [TLS Configuration](#tls-configuration) for complete setup instructions.
 
 The version tagged `release` is the latest released version. The version `master` should be fine, but it may contain changes that are not yet in these release-notes.
 
@@ -13,6 +17,11 @@ such as `yubico_client`, or execution modules such as `boto3_sns`.
 IMPORTANT: The SaltGUI team can only support SaltStack versions 3006 and higher. Versions before that are no longer published by the SaltStack team.
 That makes it very hard to perform proper testing for SaltGUI releases.
 We suggest to upgrade the SaltStack installation when you are still using a version that is older than that.
+
+IMPORTANT: Since the start of SaltGUI in 2016 and until early 2026, the SaltGUI team used ES6/ES2015 only.
+As time passes, that has now become an old version. We now upgrade SaltGUI to use the ES version that was current 5 years ago.
+That means we do not force that the latest browser is used.
+But note that browsers that are older than that are not detected and failures may then occur.
 
 [![CodeQL](https://github.com/erwindon/SaltGUI/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/erwindon/SaltGUI/actions/workflows/codeql-analysis.yml)
 
@@ -32,8 +41,8 @@ We suggest to upgrade the SaltStack installation when you are still using a vers
 - View highstate for all minions with details
 - View issues for all minions with trivial solutions
 - View the values for grains for a particular minion
-- View the schedules for a particular minion
 - View the values for pillars for a particular minion
+- View the schedules for a particular minion
 - View the beacons for a particular minion
 - View the live events on the salt-event bus
 - View internal documentation for any salt command
@@ -47,6 +56,8 @@ We suggest to upgrade the SaltStack installation when you are still using a vers
 - Keyboard control to apply templates
 - Choose between live info and cached info for grains/pillar
 - View details of orchestrations and allow to start them
+- Act on multiple minions/keys/nodegroups by first selecting them
+- Follows dark-mode selection from the browser
 
 
 ## Quick start using PAM as authentication method
@@ -89,10 +100,12 @@ rest_cherrypy:
 
 - Note that the cherrypy server is part of the salt-api package and has no separate installation. It is configured using the master configuration file. When configured using the above configurations, both the api calls and the html/js files are served by the cherrypy server. Therefore no additional web application server is needed.
 - Note that from the SaltGUI GIT repository, only the directory `saltgui` forms the actual SaltGUI web application.
-- Replace each of the `/srv/saltgui` in the above config with the actual `saltgui` directory from the GIT repository. Alternatively, you can create a soft-link /src/saltgui that points to the actual saltgui directory.
+- Replace each of the `/srv/saltgui` in the above config with the actual `saltgui` directory from the GIT repository. Alternatively, you can create a soft-link `/srv/saltgui` that points to the actual saltgui directory.
 - To successfully use `salt-api` with a default PAM setup, if may be needed to grant read access on `/etc/shadow` to the `salt` user. This is best done using `sudo usermod --append --groups shadow salt`.
 - Restart everything with ``pkill salt-master && pkill salt-api && salt-master -d && salt-api -d``
-- You should be good to go. If you have any problems, open a GitHub issue. As always, SSL is recommended wherever possible but setup is beyond the scope of this guide.
+- You should be good to go. If you have any problems, open a GitHub issue.
+
+**For TLS configuration**, see the dedicated [TLS Configuration](#tls-configuration) section below for comprehensive setup instructions including enterprise best practices.
 
 **Note: With this configuration, the user has access to all salt modules available, maybe this is not what you want**
 
@@ -390,11 +403,26 @@ this should be solved by fixing the minion, the minion's host or the connection 
 this should be solved by enabling or removing that schedule.
 * States that contain one or more failed tasks
 this should be solved by retrying that state. Note that only all tasks of that state can be retried together.
+* Minions that are not the same version as the master
+this should be solved by upgrading the minion or the master
+* Minions, or the master, for which CVEs are known
+this should be solved by upgrading the minion or the master
 
 Each issue has its own dropdown-menu, which typically contains:
 * One or more salt-commands to fix the situation;
 But note that there might be more possible solutions, some of which may actually be more preferred.
 * A navigation-command to go to a page for more details.
+
+## Row selection
+Pages that show a simple list of minions allow individual minions to be selected.
+The Keys page allows individual keys to be selected.
+The NodeGroups page allows individual nodegroups and/or minions to be selected.
+
+Use panel button [✔] to show an extra column with checkboxes in the table.
+Rows can be selected one-by-one or you can use select-all, select-none by clicking on the column header.
+The selection can be inverted by using CTRL-click.
+The list of selected rows will be used in the command-box and for commands from a panel-menu.
+When the column is hidden, the selection-values are just ignored.
 
 ## Command documentation
 
@@ -503,6 +531,20 @@ Typical effect is that it is shown slightly delayed and that is looks a bit prim
 The only other allowed value is "none", with the effect that no tooltips are shown at all.
 
 
+## Complex networks
+In cases where NAT is in use, the salt-api call `wheel.minions.connected` may not report the proper information, as SaltStack
+cannot match the observed IP-numbers to minions. This causes no information to be returned by that call.
+But that call is used to collect a first indication of connection problems by SaltGUI.
+In the given scenario, that would mean that all (or most) of the minions get a warning-icon to indicate that they are no longer connected.
+That false information may be suppressed with the following setting:
+
+```
+saltgui_skip_wheel_minions_connected: True
+```
+
+In that case the connection-test is no longer executed on the Minions (main) page and also not on the Issues page.
+
+
 ## Settings and statistics
 By using ctrl-click on the SaltGUI logo in the top-left corner, an otherwise hidden page is made visible. The page shows the relevant settings from 3 categories on the left side and the api statistics on the right side.
 
@@ -582,47 +624,119 @@ Note that the main page of SaltGUI is then located at `/app/`. When you want `/a
 
 
 ## Development environment with Docker
-To make life a bit easier for testing SaltGUI or setting up a local development environment you can use the provided docker-compose setup in this repository to run a saltmaster with three minions, including SaltGUI:
+To make life a bit easier for testing SaltGUI or setting up a local development environment, you can use the provided docker-compose setups in this repository:
+
+**For basic testing (HTTP):**
 ```
 cd docker
 docker-compose up
 ```
 Then browse to [http://localhost:3333/](http://localhost:3333/), you can login with `salt:salt`.
 
+**For TLS testing:**
+```
+cd docker
+docker-compose -f docker-compose-tls.yml up
+```
+Then browse to [https://localhost:3334/](https://localhost:3334/), you can login with `salt:salt`.
+
+For convenience, you can also simply start the shell script `runstd.sh`.
+
+
+## TLS-enabled Docker Environment
+For production use or testing with TLS encryption, you can use the TLS-enabled Docker configuration:
+
+```bash
+cd docker
+docker-compose -f docker-compose-tls.yml up
+```
+
+This will start:
+- A SaltGUI master with TLS enabled on port 3334
+- Three minions (Ubuntu, Debian, CentOS)
+- Self-signed SSL certificates (automatically generated)
+
+**Connecting to TLS-enabled SaltGUI:**
+- Browse to [https://localhost:3334/](https://localhost:3334/)
+- You will see a security warning about the self-signed certificate
+- Accept the certificate to proceed (for testing purposes)
+- Login with `salt:salt`
+
+**Important Notes for TLS Setup:**
+- The TLS configuration uses self-signed certificates generated during the Docker build
+- For production use, replace the self-signed certificates with proper CA-signed certificates
+- You can mount your own certificates by modifying the `ssl_certs` volume in `docker-compose-tls.yml`
+- The TLS master configuration is located in `docker/conf/master-tls`
+
+**Custom SSL Certificates:**
+To use your own SSL certificates, place them in a directory and mount it to the container:
+```yaml
+volumes:
+  - /path/to/your/certs:/etc/ssl/saltgui
+```
+
+Your certificate directory should contain:
+- `server.crt` - SSL certificate file
+- `server.key` - Private key file
+
+For convenience, you can also simply start the shell script `runtls.sh`.
 
 ## Testing
 We provide some functional tests and unit tests. They use the docker setup to run the functional tests. You will also need [yarn](https://yarnpkg.com) and [node.js](https://nodejs.org/en/) to run them. When you have docker, yarn and node.js installed, you can run the tests from the root of the repository like this:
 ```
-bash runtests.bash
+sh runtests.sh
 ```
 
 To show the browser window + a debugger while running the functional tests you can run:
 ```
-NIGHTMARE_DEBUG=1 bash runtests.bash
+PUPPETEER_DEBUG=1 sh runtests.sh
 ```
 
 We use the following testing libraries:
-- [nightmare.js](https://github.com/segmentio/nightmare), for functional/browser tests
+- [puppeteer](https://pptr.dev/), for functional/browser tests
 - [mocha](https://mochajs.org/), a well documented testing framework for javascript
 - [chai](http://www.chaijs.com/), the preferred assertion library for testing
 
 You'll need at least:
 - `docker-compose` 1.12 or above
-- `nodejs` 8.11 or above
+- `nodejs` 18 or above
 - `yarn` 1.7 or above
 
 
 ## Known issues
-At least in Chrome 96 and Edge 96, the "pause" icon is shown in its "emoji" form and appears in its coloured form. This also happens for the looking-glass icon in the search field.
+In older versions of Chrome and Edge, the "pause" icon is shown in its "emoji" form and appears in its coloured form.
+This also happens for the looking-glass icon in the search field.
+This problem does not occur in recent versions of these browsers.
+So the simple advice is to upgrade when this occurs.
+
+### SALT 3008
+SaltGUI does not work well with SALT 3008.X on at least Debian Linux.
+The reason is that these versions have bugs in the API that SaltGUI uses.
+Normal commandline use may be unaffected though.
+Results may be different on other platforms.
+
+Here is a list of versions that we tested and their result:
+
+| Version | Result |
+| --- | --- |
+| 3008.0rc1 | Broken: invalid session after about one minute |
+| 3008.0rc2 | Broken: invalid session after about one minute |
+| 3008.0rc3 | Broken: invalid session after about one minute |
+| 3008.0rc4 | Broken: invalid session after about one minute |
+| 3008.0 | Broken: invalid session after about one minute |
+| 3008.1 | Broken: invalid session after about one minute |
+| 3008.1-1 | Broken: invalid session after about one minute |
+| 3008.1-2 | Broken: invalid session after about one minute |
+| 3008.2 | Mostly useable. event-api is broken, so Events screen does not work |
 
 
 ## Contributing
-Open a PR! Try to use no dependencies where possible, as vanilla JS is the aim. Any libraries will need to be heavily considered first. Please see the section above as PRs won't be reviewed if they don't pass the tests.
+Open a PR! Try to use no dependencies where possible, as plain JS is the aim. Any libraries will need to be heavily considered first. Please see the section above as PRs won't be reviewed if they don't pass the tests.
 
 
 ## Credits
 This excellent frontend is originally written by [Oliver Dunk](https://github.com/oliverdunk).<br>
-It was then further developed by [Martijn Jacobs](https://github.com/maerteijn).<br>
+It was then further developed by [Martijn Jacobs](https://github.com/mj026).<br>
 It is currently maintained by [Erwin Dondorp](https://github.com/erwindon).
 
 SaltGUI includes these libraries (with possible modifications):

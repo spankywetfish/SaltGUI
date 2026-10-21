@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.34.0 (2026-08-13)
+- FIXED 2 SIMILAR CODE INJECTION PROBLEMS (erwindon, reported by JirayuThongchotchaung)
+- added page for Mine information (erwindon)
+- upgraded to ES2021 with new versoion policy (erwindon)
+- follow dark mode of the browser (erwindon)
+- fixed css selector injection (anupamme)
+- fixed documenmtation (clairem-sl)
+- ugraded several standard packages (erwindon)
+- now allow selection of keys and nodegroups (erwindon)
+- fixed several code inconsistencies (erwindon)
+- various small fixes, cleaups and improvements (erwindon)
+- Several sonarqube fixes (erwindon)
+- Celebrating 625 stars on GitHub
+
+
+## 1.33.0 (2026-03-29)
+- allow operations on selected minions (erwindon, thx sx98083714)
+- added multi-architecture Docker build support (intekhab1025)
+- added SSL/TLS Support for Secure SaltGUI Deployment (intekhab1025)
+- modernized docker-compose and OS for testing (erwindon)
+- fixed orchestration columns (erwindon)
+- fixed nat-networks reporting all minions disconnected (erwindon, thx mena-smeup)
+- properly warn when clipboard not available (erwindon)
+- ugraded several standard packages (erwindon)
+- updated known issues section with current status (erwindon)
+- various small fixes, cleaups and improvements (erwindon)
+- Several eslint fixes (erwindon)
+- Celebrating 600 stars on GitHub
+
+## 1.32.1 (2025-06-15)
+- updated CVE information (erwindon)
+
+## 1.32.0 (2025-06-12)
+- updated github pipeline (erwindon)
+- moved/fixed regression test to a github pipeline (erwindon)
+- updated docker containers for testing (erwindon)
+- end of support for any salt version up to 3005.x (erwindon)
+- added icon for fedora-asahi-remix (erwindon, thx vemilyus)
+- fix minion-list in cmd-box under restricted cicumstances (erwindon, thx sunderjayaraj)
+- fix display of on-purpose offline minions (erwindon)
+- added some support for master-clusters (erwindon)
+- added some support for orchestrations (erwindon)
+- documentation fixes (erwindon, thx Jiayang-Lai)
+- updated CVE information (erwindon)
+- small visual fixes (erwindon)
+- general component version upgrades (erwindon)
+
 ## 1.31.0 (2024-06-17)
 - fixes and improvements for highstate task-indicators (thx AntonOvseenko)
 - allow job info to be updated when job was still running (thx gseguinbourgeois)
@@ -355,7 +402,7 @@
 
 ## 1.3.0 (2018-09-28)
 - Improved command parser (erwindon)
-- Loads of ES6 code improvements and testing including linting (erwindon/maerteijn)
+- Loads of ES6 code improvements and testing including linting (erwindon/mj026)
 - Documentation view option in the command box (erwindon)
 - Show job progress in job list (erwindon)
 - Improved job detail (erwindon)
@@ -386,10 +433,10 @@
 - Now sort the jobs correctly on ``StartDate`` in the overview window (erwindon)
 
 ## 1.0.0 (2018-03-07)
-- Original release with some styling fixes and with enabled highstate functionality (maerteijn)
+- Original release with some styling fixes and with enabled highstate functionality (mj026)
 
 ## (2017-11-15)
-- New maintainer (maerteijn)
+- New maintainer (mj026)
 
 ## (2016-07-20)
 - Initial version (oliverdunk)

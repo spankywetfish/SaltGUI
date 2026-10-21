@@ -37,11 +37,11 @@ export class SchedulesMinionPanel extends Panel {
 
     const localScheduleListPromise = this.api.getLocalScheduleList(minionId);
 
-    localScheduleListPromise.then((pLocalScheduleListData) => {
-      this._handleLocalScheduleList(pLocalScheduleListData, minionId);
+    localScheduleListPromise.then((ok_LocalScheduleList) => {
+      this._handleLocalScheduleList(ok_LocalScheduleList, minionId);
       return true;
-    }, (pLocalScheduleListMsg) => {
-      this._handleLocalScheduleList(JSON.stringify(pLocalScheduleListMsg), minionId);
+    }, (_error_LocalScheduleList) => {
+      this._handleLocalScheduleList(JSON.stringify(_error_LocalScheduleList), minionId);
       return false;
     });
   }
@@ -61,76 +61,77 @@ export class SchedulesMinionPanel extends Panel {
 
     this.schedulesEnabled = schedules.enabled;
 
-    if (schedules && schedules.enabled === false) {
+    if (schedules?.enabled === false) {
       this.updateTitle("Schedules on " + pMinionId + " (disabled)");
     }
 
     if (schedules === undefined) {
-      this.setMsg("Unknown minion '" + pMinionId + "'");
+      this.setMsgTxt("Unknown minion '" + pMinionId + "'");
       return;
     }
     if (schedules === false) {
-      this.setMsg("Minion '" + pMinionId + "' did not answer");
+      this.setMsgTxt("Minion '" + pMinionId + "' did not answer");
       return;
     }
 
-    const keys = Object.keys(schedules.schedules).sort();
+    const keys = Object.keys(schedules.schedules).sort(Utils.mySortFunction);
     for (const scheduleName of keys) {
-
       const schedule = schedules.schedules[scheduleName];
-
-      // simplify the schedule information
-      if ("name" in schedule) {
-        delete schedule.name;
-      }
-      if (schedule.enabled === true) {
-        delete schedule.enabled;
-      }
-      if (schedule.jid_include === true) {
-        delete schedule.jid_include;
-      }
-      if (schedule.maxrunning === 1) {
-        delete schedule.maxrunning;
-      }
-
-      const tr = Utils.createTr();
-
-      const scheduleMenu = new DropDownMenu(tr, "smaller");
-
-      const nameTd = Utils.createTd("schedule-name", scheduleName);
-      tr.appendChild(nameTd);
-
-      const scheduleModifyCmdArr = ["schedule.modify", scheduleName];
-      for (const key in schedule) {
-        const value = schedule[key];
-        scheduleModifyCmdArr.push(key + "=", value);
-      }
-      this._addMenuItemModifyJob(scheduleMenu, pMinionId, scheduleModifyCmdArr);
-      this._addMenuItemScheduleEnableJobWhenNeeded(scheduleMenu, pMinionId, scheduleName, schedule);
-      this._addMenuItemScheduleDisableJobWhenNeeded(scheduleMenu, pMinionId, scheduleName, schedule);
-      this._addMenuItemScheduleDeleteJob(scheduleMenu, pMinionId, scheduleName);
-      this._addMenuItemScheduleRunJob(scheduleMenu, pMinionId, scheduleName, schedule);
-
-      // menu comes before this data on purpose
-      const scheduleValue = Output.formatObject(schedule);
-      const scheduleValueTd = Utils.createTd("schedule-value", scheduleValue);
-      if (schedule.enabled === false || schedules.enabled === false) {
-        scheduleValueTd.classList.add("schedule-disabled");
-      }
-      tr.appendChild(scheduleValueTd);
-
-      const tbody = this.table.tBodies[0];
-      tbody.appendChild(tr);
-
-      tr.addEventListener("click", (pClickEvent) => {
-        this.runCommand("", pMinionId, scheduleModifyCmdArr);
-        pClickEvent.stopPropagation();
-      });
+      this._simplifyScheduleAndAddRow(schedule, scheduleName, pMinionId, schedules);
     }
 
     const txt = Utils.txtZeroOneMany(keys.length,
       "No schedules", "{0} schedule", "{0} schedules");
-    this.setMsg(txt);
+    this.setMsgTxt(txt);
+  }
+
+  _simplifyScheduleAndAddRow (schedule, scheduleName, pMinionId, schedules) {
+    // simplify the schedule information
+    if ("name" in schedule) {
+      delete schedule.name;
+    }
+    if (schedule.enabled === true) {
+      delete schedule.enabled;
+    }
+    if (schedule.jid_include === true) {
+      delete schedule.jid_include;
+    }
+    if (schedule.maxrunning === 1) {
+      delete schedule.maxrunning;
+    }
+
+    const tr = Utils.createTr();
+    const scheduleMenu = new DropDownMenu(tr, "smaller");
+
+    const nameTd = Utils.createTd("schedule-name", scheduleName);
+    tr.appendChild(nameTd);
+
+    const scheduleModifyCmdArr = ["schedule.modify", scheduleName];
+    for (const key in schedule) {
+      const value = schedule[key];
+      scheduleModifyCmdArr.push(key + "=", value);
+    }
+    this._addMenuItemModifyJob(scheduleMenu, pMinionId, scheduleModifyCmdArr);
+    this._addMenuItemScheduleEnableJobWhenNeeded(scheduleMenu, pMinionId, scheduleName, schedule);
+    this._addMenuItemScheduleDisableJobWhenNeeded(scheduleMenu, pMinionId, scheduleName, schedule);
+    this._addMenuItemScheduleDeleteJob(scheduleMenu, pMinionId, scheduleName);
+    this._addMenuItemScheduleRunJob(scheduleMenu, pMinionId, scheduleName, schedule);
+
+    // menu comes before this data on purpose
+    const scheduleValue = Output.formatObject(schedule);
+    const scheduleValueTd = Utils.createTd("schedule-value", scheduleValue);
+    if (schedule.enabled === false || schedules.enabled === false) {
+      scheduleValueTd.classList.add("schedule-disabled");
+    }
+    tr.appendChild(scheduleValueTd);
+
+    const tbody = this.table.tBodies[0];
+    tbody.appendChild(tr);
+
+    tr.addEventListener("click", (pClickEvent) => {
+      this.runCommand("", pMinionId, scheduleModifyCmdArr);
+      pClickEvent.stopPropagation();
+    });
   }
 
   _addPanelMenuItemScheduleEnableWhenNeeded () {

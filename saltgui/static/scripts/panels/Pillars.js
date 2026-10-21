@@ -6,18 +6,21 @@ import {Utils} from "../Utils.js";
 export class PillarsPanel extends Panel {
 
   constructor () {
-    super("pillars");
+    super("pillars", ["select_minions"]);
 
     this.addTitle("Pillars");
     this.addSearchButton();
+    this.addFilterButton();
     this.addWarningField();
-    this.addTable(["-menu-", "Minion", "Status", "Pillars"]);
+    this.addTable(["-select-", "-menu-", "Minion", "Status", "Pillars"]);
     this.setTableSortable("Minion", "asc");
     this.setTableClickable("page");
     this.addMsg();
   }
 
   onShow () {
+    super.onShow();
+
     const useCachePillar = Utils.getStorageItemBoolean("session", "use_cache_for_pillar", false);
     this.setWarningText("info", useCachePillar ? "the content of this screen is based on cached grains info, minion status or pillar info may not be accurate" : "");
 
@@ -26,19 +29,19 @@ export class PillarsPanel extends Panel {
 
     this.nrMinions = 0;
 
-    wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
-      this._handlePillarsWheelKeyListAll(pWheelKeyListAllData);
-      localPillarObfuscatePromise.then((pLocalPillarObfuscateData) => {
-        this.updateMinions(pLocalPillarObfuscateData);
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      this._handlePillarsWheelKeyListAll(ok_WheelKeyListAll);
+      localPillarObfuscatePromise.then((ok_LocalPillarObfuscate) => {
+        this.updateMinions(ok_LocalPillarObfuscate);
         return true;
-      }, (pLocalPillarObfuscateMsg) => {
-        const allMinionsErr = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, JSON.stringify(pLocalPillarObfuscateMsg));
+      }, (_error_LocalPillarObfuscate) => {
+        const allMinionsErr = Utils.msgPerMinion(ok_WheelKeyListAll.return[0].data.return.minions, JSON.stringify(_error_LocalPillarObfuscate));
         this.updateMinions({"return": [allMinionsErr]});
         return false;
       });
       return true;
-    }, (pWheelKeyListAllMsg) => {
-      this._handlePillarsWheelKeyListAll(JSON.stringify(pWheelKeyListAllMsg));
+    }, (_error_WheelKeyListAll) => {
+      this._handlePillarsWheelKeyListAll(JSON.stringify(_error_WheelKeyListAll));
       Utils.ignorePromise(localPillarObfuscatePromise);
       return false;
     });

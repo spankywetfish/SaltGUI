@@ -1,16 +1,18 @@
+/* global navigator */
+
 import {Output} from "./Output.js";
 import {Utils} from "../Utils.js";
 
 export class OutputHighstateSummarySaltGui {
 
-  static addPercentage (pCount, pTotal) {
+  static addPercentage (pCount, pTotal, pLocale = navigator.language) {
     const stateOutputPct = Utils.getStorageItemBoolean("session", "state_output_pct");
 
     if (!stateOutputPct) {
-      return pCount;
+      return pCount + "";
     }
 
-    return pCount + " (" + (100 * pCount / pTotal).toLocaleString(undefined, {"maximumFractionDigits": 1, "minimumFractionDigits": 1}) + "%)";
+    return pCount + " (" + (pCount / pTotal).toLocaleString(pLocale, {"maximumFractionDigits": 1, "minimumFractionDigits": 1, "style": "percent"}) + ")";
   }
 
   static addSummarySpan (pDiv, pSucceeded, pFailed, pSkipped, pTotalMilliSeconds, pChangesDetail, pHidden) {
@@ -48,6 +50,7 @@ export class OutputHighstateSummarySaltGui {
     }
 
     if (line) {
+      // strip the prefix ", "
       const txtDiv = Utils.createDiv("", line.substring(2));
       pDiv.append(txtDiv);
     }

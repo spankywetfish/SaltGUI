@@ -3,6 +3,8 @@
 
   <head>
     <title>SaltGUI</title>
+    <meta name="description" content="SaltGUI - Web interface for managing Saltstack installations"/>
+    <link rel='stylesheet' type='text/css' href='static/stylesheets/variables.css'/>
     <link rel='stylesheet' type='text/css' href='static/stylesheets/controls.css'/>
     <link rel='stylesheet' type='text/css' href='static/stylesheets/main.css'/>
     <link rel='stylesheet' type='text/css' href='static/stylesheets/login.css'/>
@@ -17,6 +19,7 @@
     <link rel='stylesheet' type='text/css' href='static/stylesheets/tooltip.css'/>
     <link rel='stylesheet' type='text/css' href='static/stylesheets/options.css'/>
     <link rel='stylesheet' type='text/css' href='static/stylesheets/events.css'/>
+    <link rel='stylesheet' type='text/css' href='static/stylesheets/mine.css'/>
     <link rel='stylesheet' type='text/css' href='static/sorttable/sorttable.css'/>
     <link rel='shortcut icon' href='static/images/icon.png'/>
   </head>
@@ -58,7 +61,7 @@
       <div id="warning" style="display: none"></div>
     </header>
 
-    <div id='route-container'>
+    <div id='route-container' role="main">
     </div>
 
     <div class='popup' id='popup-run-command'>
@@ -69,8 +72,8 @@
         <!-- FE0E = VARIATION SELECTOR-15 (render as text) -->
         <span id="help" class="small-button small-button-right small-button-for-click" style="cursor: help">&#x2753;&#xFE0E;</span>
         <div><h1>Manual Run</h1><p id="template-catmenu-here"></p><p id="template-tmplmenu-here"></p></div>
-        <div id="target-box"><input list="data-list-target" id='target' type='text' placeholder="Target" spellcheck="false" style="margin-right: 10px"/></div>
-        <div id="cmd-box"><input id='command' type='text' placeholder="Command" spellcheck="false" style="margin-right: 10px"/></div>
+        <div id="target-box"><!-- //NOSONAR --><input list="data-list-target" id='target' type='text' placeholder="Target" spellcheck="false" style="margin-right: 10px"/></div>
+        <div id="cmd-box"><!-- //NOSONAR --><input id='command' type='text' placeholder="Command" spellcheck="false" style="margin-right: 10px"/></div>
         <div id="run-block"><input id="run-command" type='submit' value="Run command" style="margin-right: 10px"/></div>
         <pre id="popup-output" class='output'>Waiting for command...</pre>
       </div>

@@ -14,65 +14,74 @@ const MINION = 2;
 export class MinionsPanel extends Panel {
 
   constructor () {
-    super("minions");
+    super("minions", ["select_minions"]);
 
     this.addTitle("Minions");
     this.addPanelMenu();
     this._addMenuItemStateApply(this.panelMenu, "*");
     this._addMenuItemStateApplyTest(this.panelMenu, "*");
     this.addSearchButton();
+    this.addFilterButton();
     this.addWarningField();
-    this.addTable(["-menu-", "Minion", "Status", "Salt version", "OS version"]);
+    this.addTable(["-select-", "-menu-", "Minion", "Status", "Salt version", "OS version"]);
     this.setTableSortable("Minion", "asc");
     this.setTableClickable("cmd");
     this.addMsg();
   }
 
   onShow () {
+    super.onShow();
+
     this.nrMinions = 0;
 
     const useCacheGrains = Utils.getStorageItemBoolean("session", "use_cache_for_grains", false);
     this.setWarningText("info", useCacheGrains ? "the content of this screen is based on cached grains info, minion status or grain info may not be accurate" : "");
 
+    const skipWheelMinionsConnected = Utils.getStorageItemBoolean("session", "skip_wheel_minions_connected", false);
+
     const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
-    const wheelMinionsConnectedPromise = this.api.getWheelMinionsConnected();
+    const wheelMinionsConnectedPromise = skipWheelMinionsConnected ? null : this.api.getWheelMinionsConnected();
     const localGrainsItemsPromise = useCacheGrains ? this.api.getRunnerCacheGrains(null) : this.api.getLocalGrainsItems(null);
 
     const runnerManageVersionsPromise = this.api.getRunnerManageVersions();
 
     this.loadMinionsTxt();
 
-    wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
-      this._handleMinionsWheelKeyListAll(pWheelKeyListAllData);
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      this._handleMinionsWheelKeyListAll(ok_WheelKeyListAll);
 
-      wheelMinionsConnectedPromise.then((pWheelMinionsConnectedData) => {
-        this._handlewheelMinionsConnected(pWheelMinionsConnectedData, pWheelKeyListAllData);
-        return true;
-      }, (pWheelMinionsConnectedMsg) => {
-        Utils.debug("pWheelMinionsConnectedMsg", pWheelMinionsConnectedMsg);
-        return false;
-      });
+      if (wheelMinionsConnectedPromise != null) {
+        wheelMinionsConnectedPromise.then((ok_WheelMinionsConnected) => {
+          this._handlewheelMinionsConnected(ok_WheelMinionsConnected, ok_WheelKeyListAll);
+          return true;
+        }, (_error_WheelMinionsConnected) => {
+          Utils.debug("_error_WheelMinionsConnected", _error_WheelMinionsConnected);
+          return false;
+        });
+      }
 
-      localGrainsItemsPromise.then((pLocalGrainsItemsData) => {
-        this.updateMinions(pLocalGrainsItemsData);
+      localGrainsItemsPromise.then((ok_LocalGrainsItems) => {
+        this.updateMinions(ok_LocalGrainsItems);
         return true;
-      }, (pLocalGrainsItemsMsg) => {
-        const allMinionsErr = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, JSON.stringify(pLocalGrainsItemsMsg));
+      }, (_error_LocalGrainsItems) => {
+        const allMinionsErr = Utils.msgPerMinion(ok_WheelKeyListAll.return[0].data.return.minions, JSON.stringify(_error_LocalGrainsItems));
         this.updateMinions({"return": [allMinionsErr]});
         return false;
       });
 
-      runnerManageVersionsPromise.then((pRunnerManageVersionsData) => {
-        this._handleRunnerManageVersions(pRunnerManageVersionsData);
+      runnerManageVersionsPromise.then((ok_RunnerManageVersions) => {
+        this._handleRunnerManageVersions(ok_RunnerManageVersions);
         return true;
-      }, (pRunnerManageVersionsMsg) => {
-        this._handleRunnerManageVersions(JSON.stringify(pRunnerManageVersionsMsg));
+      }, (_error_RunnerManageVersions) => {
+        this._handleRunnerManageVersions(JSON.stringify(_error_RunnerManageVersions));
         return false;
       });
       return true;
-    }, (pWheelKeyListAllMsg) => {
-      this._handleMinionsWheelKeyListAll(JSON.stringify(pWheelKeyListAllMsg));
-      Utils.ignorePromise(wheelMinionsConnectedPromise);
+    }, (_error_WheelKeyListAll) => {
+      this._handleMinionsWheelKeyListAll(JSON.stringify(_error_WheelKeyListAll));
+      if (wheelMinionsConnectedPromise != null) {
+        Utils.ignorePromise(wheelMinionsConnectedPromise);
+      }
       Utils.ignorePromise(localGrainsItemsPromise);
       Utils.ignorePromise(runnerManageVersionsPromise);
       return false;
@@ -97,8 +106,9 @@ export class MinionsPanel extends Panel {
       this._addMenuItemStateApplyTest(minionTr.dropdownmenu, minionId);
       this._addMenuItemShowGrains(minionTr.dropdownmenu, minionId);
       this._addMenuItemShowPillars(minionTr.dropdownmenu, minionId);
-      this._addMenuItemShowSchedules(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowMine(minionTr.dropdownmenu, minionId);
       this._addMenuItemShowBeacons(minionTr.dropdownmenu, minionId);
+      this._addMenuItemShowSchedules(minionTr.dropdownmenu, minionId);
     }
 
     this.updateFooter();
@@ -138,7 +148,7 @@ export class MinionsPanel extends Panel {
       // make it a list in compound notation
       notConnectedStr = "L@" + notConnectedStr.replace(/^,/, "");
     } else {
-      // no need for list
+      // no need for list when it has just one element
       notConnectedStr = notConnectedStr.substring(2);
     }
     return "* and not " + notConnectedStr;
@@ -155,7 +165,7 @@ export class MinionsPanel extends Panel {
     const minionIds = pWheelMinionsConnectedData.return[0].data.return;
 
     for (const tr of this.table.tBodies[0].childNodes) {
-      tr.dataset.isConnected = minionIds.indexOf(tr.dataset.minionId) >= 0;
+      tr.dataset.isConnected = minionIds.includes(tr.dataset.minionId);
 
       if (tr.dataset.isConnected) {
         // skip the connected minions
@@ -191,8 +201,9 @@ export class MinionsPanel extends Panel {
     this._addMenuItemStateApplyTest(minionTr.dropdownmenu, pMinionId);
     this._addMenuItemShowGrains(minionTr.dropdownmenu, pMinionId);
     this._addMenuItemShowPillars(minionTr.dropdownmenu, pMinionId);
-    this._addMenuItemShowSchedules(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowMine(minionTr.dropdownmenu, pMinionId);
     this._addMenuItemShowBeacons(minionTr.dropdownmenu, pMinionId);
+    this._addMenuItemShowSchedules(minionTr.dropdownmenu, pMinionId);
 
     minionTr.addEventListener("click", (pClickEvent) => {
       const cmdArr = ["state.apply"];
@@ -204,14 +215,14 @@ export class MinionsPanel extends Panel {
   _addMenuItemStateApply (pMenu, pMinionId) {
     pMenu.addMenuItem("Apply state...", () => {
       const cmdArr = ["state.apply"];
-      this.runCommand("", pMinionId, cmdArr);
+      this.runCommand("", pMinionId, cmdArr, ["select_minions"]);
     });
   }
 
   _addMenuItemStateApplyTest (pMenu, pMinionId) {
     pMenu.addMenuItem("Test state...", () => {
       const cmdArr = ["state.apply", "test=", true];
-      this.runCommand("", pMinionId, cmdArr);
+      this.runCommand("", pMinionId, cmdArr, ["select_minions"]);
     });
   }
 
@@ -221,15 +232,15 @@ export class MinionsPanel extends Panel {
     });
   }
 
-  _addMenuItemShowSchedules (pMenu, pMinionId) {
-    pMenu.addMenuItem("Show schedules", (pClickEvent) => {
-      this.router.goTo("schedules-minion", {"minionid": pMinionId}, undefined, pClickEvent);
-    });
-  }
-
   _addMenuItemShowPillars (pMenu, pMinionId) {
     pMenu.addMenuItem("Show pillars", (pClickEvent) => {
       this.router.goTo("pillars-minion", {"minionid": pMinionId}, undefined, pClickEvent);
+    });
+  }
+
+  _addMenuItemShowMine (pMenu, pMinionId) {
+    pMenu.addMenuItem("Show mine", (pClickEvent) => {
+      this.router.goTo("mine-minion", {"minionid": pMinionId}, undefined, pClickEvent);
     });
   }
 
@@ -239,10 +250,16 @@ export class MinionsPanel extends Panel {
     });
   }
 
+  _addMenuItemShowSchedules (pMenu, pMinionId) {
+    pMenu.addMenuItem("Show schedules", (pClickEvent) => {
+      this.router.goTo("schedules-minion", {"minionid": pMinionId}, undefined, pClickEvent);
+    });
+  }
+
   static _getCveData () {
     // See https://docs.saltproject.io/en/master/topics/releases/version_numbers.html
-    // See https://cve.mitre.org/cve/search_cve_list.html
-    // See e.g. https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-11652
+    // See https://www.cve.org/
+    // See e.g. https://www.cve.org/CVERecord?id=CVE-2020-11652
     // We do not distinguish between different tools like master/minion/api
     // We compare only the master and minion version and also
     // the master vs. minion version
@@ -542,14 +559,88 @@ export class MinionsPanel extends Panel {
 
       // unclear for which older saltstack versions also
       ["CVE-2024-26130", MASTER + MINION, ["3006", "7"]],
+
       ["CVE-2024-27306", MASTER + MINION, ["3006", "7"]],
+
+      ["CVE-2024-34064", MASTER + MINION, ["3006", "[0-8]"]],
       ["CVE-2024-34064", MASTER + MINION, ["3007", "0"]],
+
+      ["CVE-2024-37088", MASTER + MINION, ["3006", "[0-8]"]],
+
+      ["CVE-2024-38822", MASTER, ["3006", "[0-9]"]],
+      ["CVE-2024-38822", MASTER, ["3006", "1[0-1]"]],
+      ["CVE-2024-38822", MASTER, ["3007", "[0-3]"]],
+
+      ["CVE-2024-38823", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2024-38823", MASTER + MINION, ["3006", "1[0-1]"]],
+      ["CVE-2024-38823", MASTER + MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2024-38824", MASTER, ["3006", "[0-9]"]],
+      ["CVE-2024-38824", MASTER, ["3006", "1[0-1]"]],
+      ["CVE-2024-38824", MASTER, ["3007", "[0-3]"]],
+
+      ["CVE-2024-38825", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2024-38825", MASTER + MINION, ["3006", "1[0-1]"]],
+      ["CVE-2024-38825", MASTER + MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2025-6965", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-6965", MASTER + MINION, ["3006", "1[0-4]"]],
+      ["CVE-2025-6965", MASTER + MINION, ["3007", "[0-6]"]],
+
+      ["CVE-2023-13836", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2023-13836", MASTER + MINION, ["3006", "1[0-8]"]],
+      ["CVE-2023-13836", MASTER + MINION, ["3007", "[0-9]"]],
+      ["CVE-2023-13836", MASTER + MINION, ["3007", "10"]],
+
+      ["CVE-2025-15467", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-15467", MASTER + MINION, ["3006", "1[0-9]"]],
+      ["CVE-2025-15467", MASTER + MINION, ["3007", "[0-9]"]],
+      ["CVE-2025-15467", MASTER + MINION, ["3007", "1[0-1]"]],
+
+      ["CVE-2025-22236", MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-22236", MINION, ["3006", "1[0-1]"]],
+      ["CVE-2025-22236", MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2025-22237", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-22237", MASTER + MINION, ["3006", "1[0-1]"]],
+      ["CVE-2025-22237", MASTER + MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2025-22238", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-22238", MASTER + MINION, ["3006", "1[0-1]"]],
+      ["CVE-2025-22238", MASTER + MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2025-22239", MASTER, ["3006", "[0-9]"]],
+      ["CVE-2025-22239", MASTER, ["3006", "1[0-1]"]],
+      ["CVE-2025-22239", MASTER, ["3007", "[0-3]"]],
+
+      ["CVE-2025-22240", MASTER, ["3006", "[0-9]"]],
+      ["CVE-2025-22240", MASTER, ["3006", "1[0-1]"]],
+      ["CVE-2025-22240", MASTER, ["3007", "[0-3]"]],
+
+      ["CVE-2025-22241", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-22241", MASTER + MINION, ["3006", "1[0-1]"]],
+      ["CVE-2025-22241", MASTER + MINION, ["3007", "[0-3]"]],
+
+      ["CVE-2023-28370", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2023-28370", MASTER + MINION, ["3006", "1[0-7]"]],
+      ["CVE-2023-28370", MASTER + MINION, ["3007", "[0-9]"]],
+
+      ["CVE-2025-62348", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-62348", MASTER + MINION, ["3006", "1[0-6]"]],
+      ["CVE-2025-62348", MASTER + MINION, ["3007", "[0-8]"]],
+
+      ["CVE-2025-62349", MASTER + MINION, ["3006", "[0-9]"]],
+      ["CVE-2025-62349", MASTER + MINION, ["3006", "1[0-6]"]],
+      ["CVE-2025-62349", MASTER + MINION, ["3007", "[0-8]"]],
     ];
 
-    // the above table is up-to-date until (including) 3006.8 and 3007.1
+    // ADD_RELEASE
+    // the above table is up-to-date until (including) 3006.23 and 3007.14
+    // please file an issue for SaltGUI when a saltstack version newer than that exists
+    // https://github.com/erwindon/SaltGUI/issues/new?template=add_release.md
   }
 
-  static _getCveBugs (pVersion, pNodeType) {
+  static getCveBugs (pVersion, pNodeType) {
     const found = {};
 
     if (!pVersion) {
@@ -569,41 +660,51 @@ export class MinionsPanel extends Panel {
     const entries = MinionsPanel._getCveData();
 
     for (const entry of entries) {
-      const id = entry[0];
-      const nodeType = entry[1];
-      const patterns = entry[2];
-
-      /* eslint-disable no-bitwise */
-      if ((nodeType & pNodeType) !== pNodeType) {
-        // no, this CVE not valid for this (master/minion)
-        continue;
-      }
-      /* eslint-enable no-bitwise */
-
-      let fnd = true;
-      for (let i = 0; i < patterns.length; i++) {
-        if (typeof patterns[i] === "string") {
-          patterns[i] = new RegExp("^" + patterns[i] + "$");
-        }
-        if (patterns[i] === null && items[i] === undefined) {
-          continue;
-        }
-        if (patterns[i] === null) {
-          fnd = false;
-          break;
-        }
-        if (patterns[i].test(items[i])) {
-          continue;
-        }
-        fnd = false;
-        break;
-      }
-      if (fnd) {
-        found[id] = true;
+      if (MinionsPanel._matchesCveEntry(entry, pNodeType, items)) {
+        found[entry[0]] = true;
       }
     }
 
     return found;
+  }
+
+  static _matchesCveEntry (pEntry, pNodeType, pItems) {
+    const nodeType = pEntry[1];
+
+    // Check if entry supports the requested node type:
+    // either it matches exactly or the entry applies to all types (MASTER+MINION)
+    if (nodeType !== pNodeType && nodeType !== MASTER + MINION) {
+      // no, this CVE not valid for this (master/minion)
+      return false;
+    }
+
+    return MinionsPanel._matchesPatterns(pEntry[2], pItems);
+  }
+
+  static _matchesPatterns (pPatterns, pItems) {
+    for (let i = 0; i < pPatterns.length; i++) {
+      if (!MinionsPanel._matchesPattern(pPatterns, i, pItems[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static _matchesPattern (pPatterns, pIndex, pItem) {
+    let pattern = pPatterns[pIndex];
+
+    if (typeof pattern === "string") {
+      pattern = new RegExp("^" + pattern + "$");
+      pPatterns[pIndex] = pattern;
+    }
+
+    if (pattern === null && pItem === undefined) {
+      return true;
+    }
+    if (pattern === null) {
+      return false;
+    }
+    return pattern.test(pItem);
   }
 
   static _addCveList (pName, pVersion, pBugs, pAllCveKeys) {
@@ -612,14 +713,14 @@ export class MinionsPanel extends Panel {
       return txt;
     }
     txt += "\n" + Character.WARNING_SIGN + pName + " has version " + pVersion + " and is VULNERABLE\nfor exploit";
-    const bugs = Object.keys(pBugs).sort();
+    const bugs = Object.keys(pBugs).sort(Utils.mySortFunction);
     if (bugs.length > 1) {
       txt += "s";
     }
     // initial line only has 3 entries due to some initial text on same line
     let cnt = 3;
     for (const bug of bugs) {
-      if (bugs.length > 1 && bug === bugs[bugs.length - 1]) {
+      if (bugs.length > 1 && bug === bugs[bugs.length - 1]) { // NOSONAR S7755
         txt += " and";
       } else if (bug !== bugs[0]) {
         txt += ",";
@@ -633,7 +734,7 @@ export class MinionsPanel extends Panel {
       }
       txt += bug;
       cnt -= 1;
-      if (pAllCveKeys.indexOf(bug) < 0) {
+      if (!pAllCveKeys.includes(bug)) {
         pAllCveKeys.push(bug);
       }
     }
@@ -648,7 +749,7 @@ export class MinionsPanel extends Panel {
 
     const versionList = pRunnerManageVersionsData.return[0];
     const masterVersion = versionList["Master"];
-    const masterBugs = MinionsPanel._getCveBugs(masterVersion, MASTER);
+    const masterBugs = MinionsPanel.getCveBugs(masterVersion, MASTER);
 
     for (const outcome in versionList) {
 
@@ -658,63 +759,75 @@ export class MinionsPanel extends Panel {
       }
 
       for (const minionId in versionList[outcome]) {
-
-        const versionTr = this.table.querySelector("#" + Utils.getIdFromMinionId(minionId));
-        if (!versionTr) {
-          continue;
-        }
-        const versionSpan = versionTr.querySelector(".saltversion");
-        if (!versionSpan) {
-          continue;
-        }
-
-        const minionVersion = versionTr.dataset.saltversion;
-        if (!minionVersion) {
-          // no response for this minion
-          continue;
-        }
-        const minionBugs = MinionsPanel._getCveBugs(minionVersion, MINION);
-
-        if (Object.keys(masterBugs).length) {
-          Panel.addPrefixIcon(versionSpan, Character.WARNING_SIGN);
-        } else if (Object.keys(minionBugs).length) {
-          Panel.addPrefixIcon(versionSpan, Character.WARNING_SIGN);
-        } else if (outcome === "Minion requires update") {
-          Panel.addPrefixIcon(versionSpan, Character.WARNING_SIGN);
-        } else if (outcome === "Minion newer than master") {
-          Panel.addPrefixIcon(versionSpan, Character.WARNING_SIGN);
-        } else if (outcome === "Up to date") {
-          // VOID
-        }
-
-        const allCveKeys = Object.keys(masterBugs);
-        let txt = "";
-        txt += MinionsPanel._addCveList("The salt-master", masterVersion, masterBugs, allCveKeys);
-        txt += MinionsPanel._addCveList("This salt-minion", minionVersion, minionBugs, allCveKeys);
-
-        if (outcome === "Minion requires update") {
-          txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + minionVersion + ") is older than the salt-master (" + masterVersion + ")";
-        } else if (outcome === "Minion newer than master") {
-          txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + minionVersion + ") is newer than the salt-master (" + masterVersion + ")";
-        }
-
-        if (txt) {
-          txt += "\nUpgrade is highly recommended!";
-          if (allCveKeys.length > 0) {
-            txt += "\nClick to show these CVEs on cve.mitre.org";
-            versionSpan.addEventListener("click", (pClickEvent) => {
-              let url = "https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=";
-              for (let i = 0; i < allCveKeys.length; i++) {
-                url += (i === 0 ? "" : "%20") + allCveKeys[i];
-              }
-              window.open(url);
-              // prevent the click to open the run-dialog
-              pClickEvent.stopPropagation();
-            });
-          }
-          Utils.addToolTip(versionSpan, txt.trim(), "error-bottom-left");
-        }
+        this._processMinionVersion(minionId, outcome, masterVersion, masterBugs);
       }
+    }
+  }
+
+  _processMinionVersion (pMinionId, pOutcome, pMasterVersion, pMasterBugs) {
+    const versionTr = this.table.querySelector("#" + Utils.getIdFromMinionId(pMinionId));
+    if (!versionTr) {
+      return;
+    }
+    const versionSpan = versionTr.querySelector(".saltversion");
+    if (!versionSpan) {
+      return;
+    }
+
+    const minionVersion = versionTr.dataset.saltversion;
+    if (!minionVersion) {
+      // no response for this minion
+      return;
+    }
+    const minionBugs = MinionsPanel.getCveBugs(minionVersion, MINION);
+
+    MinionsPanel._addVersionWarnings(versionSpan, pMasterVersion, pMasterBugs, minionVersion, minionBugs, pOutcome);
+  }
+
+  static _addVersionWarnings (pVersionSpan, pMasterVersion, pMasterBugs, pMinionVersion, pMinionBugs, pOutcome) {
+    MinionsPanel._addVersionIcon(pVersionSpan, pMasterBugs, pMinionBugs, pOutcome);
+    MinionsPanel._addVersionToolTip(pVersionSpan, pMasterVersion, pMasterBugs, pMinionVersion, pMinionBugs, pOutcome);
+  }
+
+  static _addVersionIcon (pVersionSpan, pMasterBugs, pMinionBugs, pOutcome) {
+    const needsWarning = Object.keys(pMasterBugs).length ||
+      Object.keys(pMinionBugs).length ||
+      pOutcome === "Minion requires update" ||
+      pOutcome === "Minion newer than master";
+
+    if (needsWarning) {
+      Panel.addPrefixIcon(pVersionSpan, Character.WARNING_SIGN);
+    }
+  }
+
+  static _addVersionToolTip (pVersionSpan, pMasterVersion, pMasterBugs, pMinionVersion, pMinionBugs, pOutcome) {
+    const allCveKeys = Object.keys(pMasterBugs);
+    let txt = "";
+    txt += MinionsPanel._addCveList("The salt-master", pMasterVersion, pMasterBugs, allCveKeys);
+    txt += MinionsPanel._addCveList("This salt-minion", pMinionVersion, pMinionBugs, allCveKeys);
+
+    if (pOutcome === "Minion requires update") {
+      txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + pMinionVersion + ") is older than the salt-master (" + pMasterVersion + ")";
+    } else if (pOutcome === "Minion newer than master") {
+      txt += "\n" + Character.WARNING_SIGN + "This salt-minion (" + pMinionVersion + ") is newer than the salt-master (" + pMasterVersion + ")";
+    }
+
+    if (txt) {
+      txt += "\nUpgrade is highly recommended!";
+      // multi-item search is no longer available on that site
+      // if (allCveKeys.length > 0) {
+      //  txt += "\nClick to show these CVEs on www.cve.org";
+      //  pVersionSpan.addEventListener("click", (pClickEvent) => {
+      //    let url = "https://www.cve.org/cgi-bin/cvekey.cgi?keyword=";
+      //    for (let i = 0; i < allCveKeys.length; i++) {
+      //      url += (i === 0 ? "" : "%20") + allCveKeys[i];
+      //    }
+      //    window.open(url);
+      //    // prevent the click to open the run-dialog
+      //    pClickEvent.stopPropagation();
+      //  });
+      // }
+      Utils.addToolTip(pVersionSpan, txt.trim(), "error-bottom-left");
     }
   }
 }

@@ -1,110 +1,23 @@
 {
   "name": "saltgui-test",
   "description": "Code linting and testing package for SaltGUI",
-  "author": "Martijn Jacobs",
-  "version": "0.0.1",
+  "author": "(initial) Oliver Dunk, (next) Martijn Jacobs, (current) Erwin Dondorp",
+  "version": "1.35.0-SNAPSHOT",
   "license": "MIT",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@babel/core": "^7.26.10",
-    "@babel/preset-env": "^7.26.9",
-    "@babel/register": "^7.25.9",
-    "babel-plugin-istanbul": "^7.0.0",
-    "chai": "^5.2.0",
-    "eslint": "^8.57.1",
-    "eslint-plugin-compat": "^6.0.2",
-    "mocha": "^11.0.1",
-    "nightmare": "^3.0.2",
-    "nyc": "^17.1.0",
-    "stylelint": "^14.0.1",
-    "stylelint-config-standard": "^29.0.0",
-    "stylelint-csstree-validator": "^2.0.0",
-    "stylelint-scss": "^5.3.2"
-  },
-  "eslintConfig": {
-    "env": {
-      "es6": true
-    },
-    "extends": [
-      "eslint:all",
-      "plugin:compat/recommended"
-    ],
-    "parserOptions": {
-      "ecmaVersion": 6,
-      "sourceType": "module"
-    },
-    "rules": {
-      "array-element-newline": 0,
-      "capitalized-comments": 0,
-      "class-methods-use-this": 2,
-      "complexity": 0,
-      "dot-notation": 0,
-      "function-call-argument-newline": 0,
-      "function-paren-newline": 0,
-      "guard-for-in": 0,
-      "id-length": [
-        "error",
-        {
-          "exceptions": [
-            "i"
-          ]
-        }
-      ],
-      "indent": [
-        "error",
-        2
-      ],
-      "init-declarations": 0,
-      "max-classes-per-file": 0,
-      "max-len": 0,
-      "max-lines": 0,
-      "max-lines-per-function": 0,
-      "max-params": 0,
-      "max-statements": 0,
-      "multiline-comment-style": 0,
-      "multiline-ternary": 0,
-      "no-console": 0,
-      "no-continue": 0,
-      "no-invalid-this": 2,
-      "no-loss-of-precision": 0,
-      "no-magic-numbers": 0,
-      "no-mixed-operators": 0,
-      "no-param-reassign": 0,
-      "no-plusplus": [
-        "error",
-        {
-          "allowForLoopAfterthoughts": true
-        }
-      ],
-      "no-redeclare": 2,
-      "no-ternary": 0,
-      "no-undef-init": 2,
-      "no-undefined": 0,
-      "no-underscore-dangle": 0,
-      "no-unused-vars": [
-        "error",
-        {
-          "args": "all"
-        }
-      ],
-      "no-warning-comments": 0,
-      "object-property-newline": 0,
-      "object-shorthand": 0,
-      "one-var": 0,
-      "padded-blocks": 0,
-      "prefer-destructuring": 0,
-      "prefer-named-capture-group": 0,
-      "prefer-template": 0,
-      "require-unicode-regexp": 0
-    }
-  },
-  "stylelint": {
-    "extends": "stylelint-config-standard",
-    "rules": {
-      "property-no-vendor-prefix": null,
-      "color-function-notation": null
-    }
+    "@babel/core": "^8.0.7",
+    "@babel/preset-env": "^8.0.7",
+    "@babel/register": "^8.0.6",
+    "chai": "^6.3.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-compat": "^7.0.2",
+    "mocha": "^12.0.3",
+    "nyc": "^18.0.0",
+    "puppeteer": "^25.14.0",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0"
   },
   "nyc": {
     "check-coverage": false,
@@ -142,12 +55,13 @@
     ]
   },
   "scripts": {
-    "eslint": "eslint saltgui/static/scripts tests/",
-    "eslint:fix": "eslint saltgui/static/scripts tests/ --fix",
+    "eslint": "eslint saltgui/static/scripts tests/ eslint.config.js",
+    "eslint:fix": "eslint saltgui/static/scripts tests/ eslint.config.js --fix",
     "stylelint": "stylelint 'saltgui/static/stylesheets/*.css'",
     "wait-for-docker": "node tests/helpers/wait-for-docker.js",
-    "test:unit": "mocha --require @babel/register --trace-warnings --check-leaks --reporter spec tests/unit/",
-    "test:functional": "mocha --bail --trace-warnings --check-leaks --reporter spec tests/functional/",
-    "test:coverage": "nyc mocha --require @babel/register --trace-warnings --check-leaks --reporter spec tests/unit/"
+    "test:unit": "mocha --trace-warnings --check-leaks --reporter spec 'tests/unit/**/*.test.js'",
+    "test:functional": "node tests/test-runner.js",
+    "test:coverage": "nyc mocha --require @babel/register --trace-warnings --check-leaks --reporter spec 'tests/unit/**/*.test.js'",
+    "test:year": "grep -e `date +%y` docs/LICENSE.md"
   }
 }

@@ -1,4 +1,4 @@
-/* global */
+/* global window */
 
 import {Character} from "../Character.js";
 import {Output} from "../output/Output.js";
@@ -31,26 +31,28 @@ export class StatsPanel extends Panel {
       this.statsTd = td;
     }
 
-    this.onShowNow();
+    this._onShowNow();
 
     this.updateStatsInterval = window.setInterval(() => {
-      this.onShowNow();
+      this._onShowNow();
     }, 5000);
   }
 
-  onShowNow () {
+  _onShowNow () {
     const statsPromise = this.api.getStats();
 
-    statsPromise.then((pStatsData) => {
-      this._handleStats(pStatsData);
+    statsPromise.then((ok_Stats) => {
+      this._handleStats(ok_Stats);
       return true;
-    }, (pStatsMsg) => {
-      this._handleStats(JSON.stringify(pStatsMsg));
+    }, (_error_Stats) => {
+      this._handleStats(JSON.stringify(_error_Stats));
       return false;
     });
   }
 
   onHide () {
+    super.onHide();
+
     if (this.updateStatsInterval) {
       // stop the timer when nobody is looking
       window.clearInterval(this.updateStatsInterval);
@@ -61,10 +63,10 @@ export class StatsPanel extends Panel {
   // provide a shortened date format for cases
   // where we see the timezone multiple times on one screen
   static _explainDateTime (pDateTimeInMs) {
-    if (pDateTimeInMs === null) {
-      return pDateTimeInMs;
+    if (pDateTimeInMs === null || pDateTimeInMs === undefined) {
+      return null;
     }
-    return pDateTimeInMs + " (=" + Output.dateTimeStr(pDateTimeInMs) + ")";
+    return Output.dateTimeStr(pDateTimeInMs);
   }
 
   _handleStats (pStatsData) {
@@ -75,72 +77,89 @@ export class StatsPanel extends Panel {
       return;
     }
 
-    this.setMsg(null);
+    this.setMsgTxt(null);
+    StatsPanel._processWorkerThreads(pStatsData);
+    StatsPanel._processCherryPyApplications(pStatsData);
+    this.statsTd.innerText = Output.formatObject(pStatsData);
+  }
 
+  static _processWorkerThreads (pStatsData) {
     for (const topKey in pStatsData) {
-
-      // this section should not contain threads
       if (topKey === "CherryPy Applications") {
         continue;
       }
 
-      // loop over all threads
       const workerThreads = pStatsData[topKey]["Worker Threads"];
       if (!workerThreads) {
         continue;
       }
 
-      let first = true;
-      /* eslint-disable no-labels */
-      nextThread: for (const threadName of Object.keys(workerThreads).sort((aa, bb) => aa.localeCompare(bb, "en", {"numeric": true}))) {
-        if (first) {
-          // always show the first item
-          // so that the structure is known even when all threads show zeroes
-          first = false;
-          continue;
-        }
-        const thread = workerThreads[threadName];
-        // find threads with all-zero statistics
-        for (const counterName in thread) {
-          if (counterName === "Enabled") {
-            // not a counter
-            continue;
-          }
-          if (thread[counterName] !== 0) {
-            continue nextThread;
-          }
-        }
-        // thread has all-zero statistics, remove that part
+      StatsPanel._filterZeroThreads(workerThreads);
+    }
+  }
+
+  static _filterZeroThreads (workerThreads) {
+    const sortedThreadNames = Object.keys(workerThreads).sort(Utils.mySortFunction);
+    let first = true;
+    for (const threadName of sortedThreadNames) {
+      if (first) {
+        first = false;
+        continue;
+      }
+      if (!StatsPanel._hasNonZeroStats(workerThreads[threadName])) {
         workerThreads[threadName] = Character.HORIZONTAL_ELLIPSIS;
       }
-      /* eslint-enable no-labels */
     }
+  }
 
+  static _hasNonZeroStats (thread) {
+    for (const counterName in thread) {
+      if (counterName !== "Enabled" && thread[counterName] !== 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static _addDateTimeField (obj, fieldName) {
+    if (obj[fieldName] === null || obj[fieldName] === undefined) {
+      return;
+    }
+    const dateTimeStr = StatsPanel._explainDateTime(obj[fieldName]);
+    if (dateTimeStr) {
+      obj[fieldName + " (SaltGUI)"] = dateTimeStr;
+    }
+  }
+
+  static _processCherryPyApplications (pStatsData) {
     const appData = pStatsData["CherryPy Applications"];
-    if (appData) {
-      // annotate 3 fields that have a huge integer value
-      // this turns the fields into strings (was number)
-      // we'll ignore that now
-
-      appData["Current Time"] = StatsPanel._explainDateTime(appData["Current Time"]);
-
-      appData["Start Time"] = StatsPanel._explainDateTime(appData["Start Time"]);
-
-      appData["Uptime"] = StatsPanel._explainDateTime(appData["Uptime"]);
-
-      const requests = appData["Requests"];
-      for (const key in requests) {
-        requests[key]["Start Time"] = StatsPanel._explainDateTime(requests[key]["Start Time"]);
-        requests[key]["End Time"] = StatsPanel._explainDateTime(requests[key]["End Time"]);
-      }
-
-      const slowQueries = appData["Slow Queries"];
-      for (const key in slowQueries) {
-        slowQueries[key]["Start Time"] = StatsPanel._explainDateTime(slowQueries[key]["Start Time"]);
-        slowQueries[key]["End Time"] = StatsPanel._explainDateTime(slowQueries[key]["End Time"]);
-      }
+    if (!appData) {
+      return;
     }
 
-    this.statsTd.innerText = Output.formatObject(pStatsData);
+    StatsPanel._addDateTimeField(appData, "Current Time");
+    StatsPanel._addDateTimeField(appData, "Start Time");
+    StatsPanel._addDateTimeField(appData, "Uptime");
+    StatsPanel._addDateTimeField(appData, "Total Time");
+    StatsPanel._addDateTimeField(appData, "Run time");
+    StatsPanel._addDateTimeField(appData, "Work Time");
+
+    const requests = appData["Requests"];
+    if (requests) {
+      StatsPanel._processDateTimeFields(requests, ["Start Time", "End Time", "Processing Time"]);
+    }
+
+    const slowQueries = appData["Slow Queries"];
+    if (slowQueries) {
+      StatsPanel._processDateTimeFields(slowQueries, ["Start Time", "End Time", "Processing Time"]);
+    }
+  }
+
+  static _processDateTimeFields (collection, dateFields) {
+    for (const key in collection) {
+      for (const field of dateFields) {
+        StatsPanel._addDateTimeField(collection[key], field);
+      }
+    }
   }
 }

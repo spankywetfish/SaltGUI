@@ -9,7 +9,7 @@ function jsonPath(obj, expr, arg) {
       result: [],
       normalize: function(expr) {
          var subx = [];
-         return expr.replace(/[\['](\??\(.*?\))[\]']/g, function($0,$1){return "[#"+(subx.push($1)-1)+"]";})
+         return expr.replace(/[['](\??\(.*?\))[\]']/g, function($0,$1){return "[#"+(subx.push($1)-1)+"]";})
                     .replace(/'?\.'?|\['?/g, ";")
                     .replace(/;;;|;;/g, ";..;")
                     .replace(/;$|'?\]|'$/g, "")
@@ -45,14 +45,14 @@ function jsonPath(obj, expr, arg) {
                P.trace(P.eval(loc, val, path.substr(path.lastIndexOf(";")+1))+";"+x, val, path);
             else if (/^\?\(.*?\)$/.test(loc)) // [?(expr)]
                P.walk(loc, x, val, path, function(m,l,x,v,p) { if (P.eval(l.replace(/^\?\((.*?)\)$/,"$1"),v[m],m)) P.trace(m+";"+x,v,p); });
-            else if (/^(-?\d*):(-?\d*):?(\d*)$/.test(loc)) // [start:end:step]  phyton slice syntax
+            else if (/^(-?\d*):(-?\d*):?(\d*)$/.test(loc)) // NOSONAR S8786 // [start:end:step]  phyton slice syntax
                P.slice(loc, x, val, path);
          }
          else
             P.store(path, val);
       },
       walk: function(loc, expr, val, path, f) {
-         if (val instanceof Array) {
+         if (Array.isArray(val)) {
             for (var i=0,n=val.length; i<n; i++)
                if (i in val)
                   f(i,loc,expr,val,path);
@@ -64,9 +64,9 @@ function jsonPath(obj, expr, arg) {
          }
       },
       slice: function(loc, expr, val, path) {
-         if (val instanceof Array) {
+         if (Array.isArray(val)) {
             var len=val.length, start=0, end=len, step=1;
-            loc.replace(/^(-?\d*):(-?\d*):?(-?\d*)$/g, function($0,$1,$2,$3){start=parseInt($1||start);end=parseInt($2||end);step=parseInt($3||step);});
+            loc.replace(/^(-?\d*):(-?\d*):?(-?\d*)$/g, function($0,$1,$2,$3){start=Number.parseInt($1||start);end=Number.parseInt($2||end);step=Number.parseInt($3||step);}); // NOSONAR S8786
             start = (start < 0) ? Math.max(0,start+len) : Math.min(len,start);
             end   = (end < 0)   ? Math.max(0,end+len)   : Math.min(len,end);
             for (var i=start; i<end; i+=step)
@@ -74,8 +74,8 @@ function jsonPath(obj, expr, arg) {
          }
       },
       eval: function(x, _v, _vname) {
-         try { return $ && _v && eval(x.replace(/@/g, "_v")); }
-         catch(e) { throw new SyntaxError("jsonPath: " + e.message + ": " + x.replace(/@/g, "_v").replace(/\^/g, "_a")); }
+         try { return $ && _v && eval(x.replaceAll("@", "_v")); }
+         catch(e) { throw new SyntaxError("jsonPath: " + e.message + ": " + x.replaceAll("@", "_v").replaceAll("^", "_a")); }
       }
    };
 

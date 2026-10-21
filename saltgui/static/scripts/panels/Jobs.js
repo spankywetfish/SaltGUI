@@ -1,4 +1,4 @@
-/* global */
+/* global console */
 
 import {Character} from "../Character.js";
 import {Panel} from "./Panel.js";
@@ -14,18 +14,18 @@ export class JobsPanel extends Panel {
     const runnerJobsListJobsPromise = this.api.getRunnerJobsListJobs();
     const runnerJobsActivePromise = this.api.getRunnerJobsActive();
 
-    runnerJobsListJobsPromise.then((pRunnerJobsListJobsData) => {
-      this._handleRunnerJobsListJobs(pRunnerJobsListJobsData, cnt);
-      runnerJobsActivePromise.then((pRunnerJobsActiveData) => {
-        this._handleRunnerJobsActive(pRunnerJobsActiveData);
+    runnerJobsListJobsPromise.then((ok_RunnerJobsListJobs) => {
+      this._handleRunnerJobsListJobs(ok_RunnerJobsListJobs, cnt);
+      runnerJobsActivePromise.then((ok_RunnerJobsActive) => {
+        this._handleRunnerJobsActive(ok_RunnerJobsActive);
         return true;
-      }, (pRunnerJobsActiveMsg) => {
-        this._handleRunnerJobsActive(JSON.stringify(pRunnerJobsActiveMsg));
+      }, (_error_RunnerJobsActive) => {
+        this._handleRunnerJobsActive(JSON.stringify(_error_RunnerJobsActive));
         return false;
       });
       return true;
-    }, (pRunnerJobsListJobsMsg) => {
-      this._handleRunnerJobsListJobs(JSON.stringify(pRunnerJobsListJobsMsg));
+    }, (_error_RunnerJobsListJobs) => {
+      this._handleRunnerJobsListJobs(JSON.stringify(_error_RunnerJobsListJobs));
       Utils.ignorePromise(runnerJobsActivePromise);
       return false;
     });
@@ -34,11 +34,11 @@ export class JobsPanel extends Panel {
   startRunningJobs () {
     const runnerJobsActivePromise = this.api.getRunnerJobsActive();
 
-    runnerJobsActivePromise.then((pRunnerJobsActiveData) => {
-      this._handleRunnerJobsActive(pRunnerJobsActiveData);
+    runnerJobsActivePromise.then((ok_RunnerJobsActive) => {
+      this._handleRunnerJobsActive(ok_RunnerJobsActive);
       return true;
-    }, (pRunnerJobsActiveMsg) => {
-      this._handleRunnerJobsActive(JSON.stringify(pRunnerJobsActiveMsg));
+    }, (_error_RunnerJobsActive) => {
+      this._handleRunnerJobsActive(JSON.stringify(_error_RunnerJobsActive));
       return false;
     });
   }
@@ -48,72 +48,98 @@ export class JobsPanel extends Panel {
       return;
     }
 
-    const tbody = this.table.tBodies[0];
-
     if (typeof pData !== "object") {
-      // update all jobs (page) with the error message
-      for (const tr of tbody.rows) {
-        const statusField = tr.querySelector("span.no-job-status");
-        if (!statusField) {
-          continue;
-        }
-        Utils.addErrorToTableCell(statusField.parentElement, pData);
-      }
+      this._markAllJobsWithError(pData);
       return;
     }
 
     const jobs = pData.return[0];
+    this._updateRunningJobs(jobs);
+    this._updateFinishedJobs();
+  }
 
-    // update all running jobs
-    for (const jobId in jobs) {
-      const job = jobs[jobId];
-
-      let targetText = "";
-      const targetField = this.table.querySelector("tr#" + Utils.getIdFromJobId(jobId) + " span.job-status");
-      const maxTextLength = 50;
-      if (targetText.length > maxTextLength) {
-        // prevent column becoming too wide
-        // yes, the addition of running/returned may again make
-        // the string longer than 50 characters, we accept that
-        targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
-      }
-      // then add the operational statistics
-      if (job.Running && job.Running.length > 0) {
-        targetText += job.Running.length + " running";
-      }
-      if (job.Returned && job.Returned.length > 0) {
-        targetText += ", " + job.Returned.length + " returned";
-      }
-
-      // the field may not (yet) be on the screen
-      if (!targetField) {
-        continue;
-      }
-      targetField.classList.remove("no-job-status");
-      targetField.innerText = targetText;
-      targetField.insertBefore(Utils.createJobStatusSpan(jobId, true), targetField.firstChild);
-      Utils.addToolTip(targetField, "Click to refresh column");
-    }
-
-    // update all finished jobs (page)
+  _markAllJobsWithError (pData) {
+    // update all jobs (page) with the error message
+    const tbody = this.table.tBodies[0];
     for (const tr of tbody.rows) {
       const statusField = tr.querySelector("span.no-job-status");
       if (!statusField) {
         continue;
       }
-      statusField.classList.remove("no-job-status");
-      statusField.innerText = "done";
-      // we show the tooltip here so that the user is invited to click on this
-      // the user then sees other rows being updated without becoming invisible
-      Utils.addToolTip(statusField, "Click to refresh column");
+      Utils.addErrorToTableCell(statusField.parentElement, pData);
+    }
+  }
 
-      // remove the refresh button when it is still there
-      // needed when not all minions have reported their status
-      // but also there are no jobs running anymore
-      const detailsField = tr.querySelector("#status" + tr.dataset.jobid);
-      if (detailsField) {
-        detailsField.remove();
+  _updateRunningJobs (pJobs) {
+    // update all running jobs
+    for (const jobId in pJobs) {
+      const job = pJobs[jobId];
+      const targetField = this.table.querySelector("tr#" + Utils.getIdFromJobId(jobId) + " span.job-status");
+
+      // the field may not (yet) be on the screen
+      if (!targetField) {
+        continue;
       }
+
+      const targetText = JobsPanel._buildJobStatusText(job);
+      JobsPanel._updateJobStatusField(targetField, jobId, targetText);
+    }
+  }
+
+  static _buildJobStatusText (pJob) {
+    let targetText = "";
+    const maxTextLength = 50;
+    if (targetText.length > maxTextLength) {
+      // prevent column becoming too wide
+      // yes, the addition of running/returned may again make
+      // the string longer than 50 characters, we accept that
+      targetText = targetText.substring(0, maxTextLength) + Character.HORIZONTAL_ELLIPSIS;
+    }
+    // then add the operational statistics
+    if (pJob.Running && pJob.Running.length > 0) {
+      targetText += pJob.Running.length + " running";
+    }
+    if (pJob.Returned && pJob.Returned.length > 0) {
+      targetText += ", " + pJob.Returned.length + " returned";
+    }
+    return targetText;
+  }
+
+  static _updateJobStatusField (pTargetField, pJobId, pTargetText) {
+    pTargetField.classList.remove("no-job-status");
+    pTargetField.innerText = pTargetText;
+    pTargetField.insertBefore(Utils.createJobStatusSpan(pJobId, true), pTargetField.firstChild);
+    Utils.addToolTip(pTargetField, "Click to refresh column");
+  }
+
+  _updateFinishedJobs () {
+    // update all finished jobs (page)
+    const tbody = this.table.tBodies[0];
+    for (const tr of tbody.rows) {
+      const statusField = tr.querySelector("span.no-job-status");
+      if (!statusField) {
+        continue;
+      }
+      JobsPanel._markJobAsFinished(statusField);
+      JobsPanel._removeRefreshButton(tr);
+    }
+  }
+
+  static _markJobAsFinished (pStatusField) {
+    pStatusField.classList.remove("no-job-status");
+    pStatusField.innerText = "done";
+    // we show the tooltip here so that the user is invited to click on this
+    // the user then sees other rows being updated without becoming invisible
+    Utils.addToolTip(pStatusField, "Click to refresh column");
+  }
+
+  static _removeRefreshButton (pTr) {
+    // remove the refresh button when it is still there
+    // needed when not all minions have reported their status
+    // but also there are no jobs running anymore
+    const detailsField = pTr.querySelector("#status" + pTr.dataset.jobid);
+    if (detailsField) {
+      detailsField.remove();
     }
   }
 
@@ -122,72 +148,76 @@ export class JobsPanel extends Panel {
       return;
     }
 
-    const jobs = JobsPanel._jobsToArray(pData.return[0]);
-    JobsPanel._sortJobs(jobs);
+    const jobs = JobsPanel.jobsToArray(pData.return[0]);
+    JobsPanel.sortJobs(jobs);
 
     // These jobs are likely started by the SaltGUI
     // do not display them
-    this._hideJobs.push("beacons.add");
-    this._hideJobs.push("beacons.delete");
-    this._hideJobs.push("beacons.disable");
-    this._hideJobs.push("beacons.disable_beacon");
-    this._hideJobs.push("beacons.enable");
-    this._hideJobs.push("beacons.enable_beacon");
-    this._hideJobs.push("beacons.list");
-    this._hideJobs.push("beacons.list_available");
-    this._hideJobs.push("beacons.modify");
-    this._hideJobs.push("beacons.reset");
-    this._hideJobs.push("beacons.save");
-    this._hideJobs.push("grains.append");
-    this._hideJobs.push("grains.delkey");
-    this._hideJobs.push("grains.delval");
-    this._hideJobs.push("grains.items");
-    this._hideJobs.push("grains.setval");
-    this._hideJobs.push("pillar.items");
-    this._hideJobs.push("pillar.obfuscate");
-    this._hideJobs.push("ps.kill_pid");
-    this._hideJobs.push("ps.proc_info");
-    this._hideJobs.push("test.providers");
-    this._hideJobs.push("test.version");
-    this._hideJobs.push("saltutil.find_job");
-    this._hideJobs.push("saltutil.kill_job");
-    this._hideJobs.push("saltutil.refresh_grains");
-    this._hideJobs.push("saltutil.refresh_pillar");
-    this._hideJobs.push("saltutil.running");
-    this._hideJobs.push("saltutil.signal_job");
-    this._hideJobs.push("saltutil.term_job");
-    this._hideJobs.push("schedule.add");
-    this._hideJobs.push("schedule.delete");
-    this._hideJobs.push("schedule.disable");
-    this._hideJobs.push("schedule.disable_job");
-    this._hideJobs.push("schedule.enable");
-    this._hideJobs.push("schedule.enable_job");
-    this._hideJobs.push("schedule.list");
-    this._hideJobs.push("schedule.modify");
-    this._hideJobs.push("schedule.run_job");
-    this._hideJobs.push("sys.doc");
-    // runner jobs
-    this._hideJobs.push("runner.cache.grains");
-    this._hideJobs.push("runner.cache.pillar");
-    this._hideJobs.push("runner.doc.runner");
-    this._hideJobs.push("runner.doc.wheel");
-    this._hideJobs.push("runner.jobs.active");
-    this._hideJobs.push("runner.jobs.list_job");
-    this._hideJobs.push("runner.jobs.list_jobs");
-    this._hideJobs.push("runner.manage.versions");
-    // do not hide "runner.state.orchestrate"
-    this._hideJobs.push("runner.state.orchestrate_show_sls");
-    // wheel jobs
-    this._hideJobs.push("wheel.config.values");
-    this._hideJobs.push("wheel.key.accept");
-    this._hideJobs.push("wheel.key.delete");
-    this._hideJobs.push("wheel.key.finger");
-    this._hideJobs.push("wheel.key.list_all");
-    this._hideJobs.push("wheel.key.reject");
-    this._hideJobs.push("wheel.minions.connected");
-
-    // this was automatically executed by really old minions
-    this._hideJobs.push("mine.update");
+    this._hideJobs.push(
+      "beacons.add",
+      "beacons.delete",
+      "beacons.disable",
+      "beacons.disable_beacon",
+      "beacons.enable",
+      "beacons.enable_beacon",
+      "beacons.list",
+      "beacons.list_available",
+      "beacons.modify",
+      "beacons.reset",
+      "beacons.save",
+      "grains.append",
+      "grains.delkey",
+      "grains.delval",
+      "grains.items",
+      "grains.setval",
+      "mine.delete",
+      "mine.flush",
+      "mine.get",
+      "mine.update",
+      "mine.valid",
+      "pillar.items",
+      "pillar.obfuscate",
+      "ps.kill_pid",
+      "ps.proc_info",
+      "test.providers",
+      "test.version",
+      "saltutil.find_job",
+      "saltutil.kill_job",
+      "saltutil.refresh_grains",
+      "saltutil.refresh_pillar",
+      "saltutil.running",
+      "saltutil.signal_job",
+      "saltutil.term_job",
+      "schedule.add",
+      "schedule.delete",
+      "schedule.disable",
+      "schedule.disable_job",
+      "schedule.enable",
+      "schedule.enable_job",
+      "schedule.list",
+      "schedule.modify",
+      "schedule.run_job",
+      "sys.doc",
+      // runner jobs
+      // do not hide "runner.state.orchestrate"
+      "runner.cache.grains",
+      "runner.cache.pillar",
+      "runner.doc.runner",
+      "runner.doc.wheel",
+      "runner.jobs.active",
+      "runner.jobs.list_job",
+      "runner.jobs.list_jobs",
+      "runner.manage.versions",
+      "runner.state.orchestrate_show_sls",
+      // wheel jobs
+      "wheel.config.values",
+      "wheel.key.accept",
+      "wheel.key.delete",
+      "wheel.key.finger",
+      "wheel.key.list_all",
+      "wheel.key.reject",
+      "wheel.minions.connected"
+    );
 
     let numberOfJobsShown = 0;
     let numberOfJobsEligible = 0;
@@ -232,14 +262,16 @@ export class JobsPanel extends Panel {
     }
     txt += Utils.txtZeroOneMany(this.numberOfJobsPresent,
       "", ", {0} job present", ", {0} jobs present");
-    this.setMsg(txt);
+    super.updateFooter(txt);
   }
 
-  static _jobsToArray (jobs) {
+  static jobsToArray (jobs) {
     if (typeof jobs === "string") {
       // typically when special returner is misconfigured
       // the warning may help solve that too
+      /* eslint-disable no-console */
       console.warn(jobs);
+      /* eslint-enable no-console */
       return [];
     }
     const keys = Object.keys(jobs);
@@ -254,7 +286,7 @@ export class JobsPanel extends Panel {
     return newArray;
   }
 
-  static _sortJobs (jobs) {
+  static sortJobs (jobs) {
     jobs.sort((aa, bb) => {
       // The id is already a string value based on the date,
       // let's use it to sort the jobs
@@ -267,12 +299,8 @@ export class JobsPanel extends Panel {
   }
 
   handleSaltJobRetEvent (pData) {
-
     // ignore the most common events until someone complains
-    if (pData.fun === "saltutil.find_job") {
-      return;
-    }
-    if (pData.fun === "saltutil.running") {
+    if (JobsPanel._shouldIgnoreFunction(pData.fun)) {
       return;
     }
 
@@ -282,33 +310,50 @@ export class JobsPanel extends Panel {
       return;
     }
 
-    let newLevel = 0;
-    if (pData.success === true && pData.retcode === 0) {
-      newLevel = 1;
-    } else if (pData.success === true) {
-      newLevel = 2;
-    } else {
-      newLevel = 3;
-    }
+    const newLevel = JobsPanel._calculateResultLevel(pData);
 
     // This element only exists when the user happens to look at the output of that jobId.
     const spans = this.div.querySelectorAll("#status" + jid);
     for (const span of spans) {
-      let oldLevel = span.dataset.level;
-      if (oldLevel === undefined) {
-        oldLevel = 0;
-      }
-      if (newLevel > oldLevel) {
-        span.dataset.level = newLevel;
-        if (newLevel === 1) {
-          span.style.color = "green";
-        } else if (newLevel === 2) {
-          span.style.color = "orange";
-        } else if (newLevel === 3) {
-          span.style.color = "red";
-        }
-      }
-      span.style.removeProperty("display");
+      JobsPanel._updateStatusSpan(span, newLevel);
+    }
+  }
+
+  static _shouldIgnoreFunction (pFunction) {
+    return pFunction === "saltutil.find_job" || pFunction === "saltutil.running";
+  }
+
+  static _calculateResultLevel (pData) {
+    if (pData.success === true && pData.retcode === 0) {
+      return 1;
+    }
+    if (pData.success === true) {
+      return 2;
+    }
+    return 3;
+  }
+
+  static _updateStatusSpan (pSpan, pNewLevel) {
+    let oldLevel = pSpan.dataset.level;
+    if (oldLevel === undefined) {
+      oldLevel = 0;
+    }
+
+    if (pNewLevel > oldLevel) {
+      pSpan.dataset.level = pNewLevel;
+      JobsPanel._setSpanColor(pSpan, pNewLevel);
+    }
+
+    pSpan.style.removeProperty("display");
+  }
+
+  static _setSpanColor (pSpan, pLevel) {
+    if (pLevel === 1) {
+      pSpan.style.color = "green";
+    } else if (pLevel === 2) {
+      pSpan.style.color = "orange";
+    } else if (pLevel === 3) {
+      pSpan.style.color = "red";
     }
   }
 }

@@ -1,4 +1,4 @@
-/* global */
+/* global document */
 
 import {DropDownMenu} from "../DropDown.js";
 import {Panel} from "./Panel.js";
@@ -23,13 +23,13 @@ export class TemplatesPanel extends Panel {
 
     this.nrTemplates = 0;
 
-    wheelConfigValuesPromise.then((pWheelConfigValuesData) => {
-      this._handleTemplatesWheelConfigValues(pWheelConfigValuesData);
-      this.hideColumn("Category");
-      this.hideColumn("Key");
+    wheelConfigValuesPromise.then((ok_WheelConfigValues) => {
+      this._handleTemplatesWheelConfigValues(ok_WheelConfigValues);
+      this.hideColumnWhenNone("Category");
+      this.hideColumnWhenNone("Key");
       return true;
-    }, (pWheelConfigValuesMsg) => {
-      this._handleTemplatesWheelConfigValues(JSON.stringify(pWheelConfigValuesMsg));
+    }, (_error_WheelConfigValues) => {
+      this._handleTemplatesWheelConfigValues(JSON.stringify(_error_WheelConfigValues));
       return false;
     });
   }
@@ -50,7 +50,7 @@ export class TemplatesPanel extends Panel {
     } else {
       templates = {};
     }
-    const keys = Object.keys(templates).sort();
+    const keys = Object.keys(templates).sort(Utils.mySortFunction);
     for (const key of keys) {
       const template = templates[key];
       this._addTemplate(key, template);
@@ -62,10 +62,10 @@ export class TemplatesPanel extends Panel {
   updateFooter () {
     const txt = Utils.txtZeroOneMany(this.nrTemplates,
       "No templates", "{0} template", "{0} templates");
-    this.setMsg(txt);
+    this.setMsgTxt(txt);
   }
 
-  static getTemplateCategories (template) {
+  static _getTemplateCategories (template) {
     const categories = [];
     if (template.category && typeof template.category === "string") {
       categories.push(template.category);
@@ -87,7 +87,7 @@ export class TemplatesPanel extends Panel {
     for (const key of keys) {
     // make unique
       const template = templates[key];
-      categories = categories.concat(TemplatesPanel.getTemplateCategories(template));
+      categories = categories.concat(TemplatesPanel._getTemplateCategories(template));
     }
     // make unique
     categories = categories.filter((element, index, array) => array.indexOf(element) === index);
@@ -117,7 +117,7 @@ export class TemplatesPanel extends Panel {
 
     tr.appendChild(Utils.createTd("name", pTemplateName));
 
-    const categories = TemplatesPanel.getTemplateCategories(template);
+    const categories = TemplatesPanel._getTemplateCategories(template);
     let categoryTd;
     if (categories.length > 1 || categories[0] !== undefined) {
       categoryTd = Utils.createTd("category", categories.join("\n"));

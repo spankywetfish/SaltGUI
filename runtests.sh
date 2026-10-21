@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# show what is going on
+set -x
+
+# get the needed software (for Debian 13)
+sudo apt install -y libxss1 libnss3 libasound2t64 libgtk-3-0t64 xvfb psmisc docker-ce docker-compose-plugin
+
+# prevent conflict with a previous running xvfb
+killall --quiet Xvfb
+
+set -e
+
+# add testing packages
+npm install --ignore-scripts
+
+# first see if we write es6 compatible js
+npm run eslint
+
+# and if our css is sane
+npm run stylelint
+
+# verify the copyright
+npm run test:year
+
+# run the unittests tests before docker for failing fast
+# the coverage test will repeat all this
+#npm run test:unit
+
+# run the unittests tests and create coverage report
+npm run test:coverage
+
+# start a salt master, three salt minions and saltgui to run tests on
+# Don't use --detach; travis docker does not understand it
+docker compose --file docker/docker-compose.yml up -d
+
+# wait until all are up
+npm run wait-for-docker
+
+# run the puppeteer functional tests
+# when debugging is needed:
+#export DEBUG=puppeteer:*,electron:*
+#export PUPPETEER_DEBUG=1
+# suppress Electron Security Warnings:
+export ELECTRON_DISABLE_SECURITY_WARNINGS=true
+npx puppeteer browsers install chrome # NOSONAR S6505
+xvfb-run npm run test:functional
+
+# remove the containers
+docker compose --file docker/docker-compose.yml rm --force --stop
+
+echo "DONE!"

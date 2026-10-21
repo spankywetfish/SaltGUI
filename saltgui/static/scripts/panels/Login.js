@@ -1,4 +1,4 @@
-/* global */
+/* global console document URLSearchParams window */
 
 import {BeaconsMinionPanel} from "../panels/BeaconsMinion.js";
 import {Character} from "../Character.js";
@@ -9,7 +9,7 @@ import {Utils} from "../Utils.js";
 export class LoginPanel extends Panel {
 
   constructor () {
-    LoginPanel.version = "SaltGUI v1.32.0-snapshot";
+    LoginPanel.version = "SaltGUI v1.35.0-SNAPSHOT";
 
     super("login");
 
@@ -36,6 +36,7 @@ export class LoginPanel extends Panel {
     username.type = "text";
     username.id = "username";
     username.placeholder = "Username";
+    username.autocomplete = "username";
     username.autofocus = "";
     form.append(username);
     this.usernameField = username;
@@ -44,6 +45,7 @@ export class LoginPanel extends Panel {
     password.type = "password";
     password.id = "password";
     password.placeholder = "Password";
+    password.autocomplete = "current-password";
     form.append(password);
     this.passwordField = password;
 
@@ -66,7 +68,14 @@ export class LoginPanel extends Panel {
     aa.rel = "noopener";
 
     const img = Utils.createElem("img");
-    img.src = "static/images/github.png";
+    img.setAttribute("alt", "GitHub logo");
+    const darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateGithubLogo = () => {
+      img.src = darkModeQuery.matches ? "static/images/GitHub_Invertocat_White.png" : "static/images/GitHub_Invertocat_Black.png";
+    };
+    updateGithubLogo();
+    darkModeQuery.addEventListener("change", updateGithubLogo);
+    img.style = "width: 1em; margin-right: 5px";
     aa.append(img);
 
     const txt = document.createTextNode(LoginPanel.version);
@@ -127,7 +136,9 @@ export class LoginPanel extends Panel {
       saltAuth = saltAuth.filter((item) => item !== "CLEAR");
       if (saltAuth.length === 0) {
         // no cheating
-        console.warn("salt-auth-txt has no extries, except 'CLEAR', assuming 'pam'");
+        /* eslint-disable no-console */
+        console.warn("salt-auth-txt has no entries, except 'CLEAR', assuming 'pam'");
+        /* eslint-enable no-console */
         saltAuth = ["pam"];
       }
       this.eauthField.innerHTML = "";
@@ -164,7 +175,7 @@ export class LoginPanel extends Panel {
     const noticeDiv = Utils.createDiv(pInfoClass, pText, "notice");
     noticeDiv.style.backgroundColor = pBackgroundColour;
     while (this.noticeWrapperDiv.hasChildNodes()) {
-      this.noticeWrapperDiv.removeChild(this.noticeWrapperDiv.firstChild);
+      this.noticeWrapperDiv.firstChild.remove();
     }
     this.noticeWrapperDiv.appendChild(noticeDiv);
   }
@@ -184,7 +195,9 @@ export class LoginPanel extends Panel {
           if (fields.length === 1) {
             saltAuth.push(fields[0]);
           } else {
+            /* eslint-disable no-console */
             console.warn("lines in 'salt-auth.txt' must have 1 word, not " + fields.length + " like in: " + line);
+            /* eslint-enable no-console */
           }
         }
         Utils.setStorageItem("local", "salt-auth-txt", JSON.stringify(saltAuth));
@@ -306,22 +319,33 @@ export class LoginPanel extends Panel {
     // We need these functions to populate the dropdown boxes
     const wheelConfigValuesPromise = this.api.getWheelConfigValues();
     const runnerStateOrchestrateShowSlsPromise = this.api.getRunnerStateOrchestrateShowSls();
+    const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
 
     // these may have been hidden on a previous logout
     Utils.hideAllMenus(false);
 
     // We need these functions to populate the dropdown boxes
     // or determine visibility of menu items
-    wheelConfigValuesPromise.then((pWheelConfigValuesData) => {
-      LoginPanel._handleLoginWheelConfigValues(pWheelConfigValuesData);
+    wheelConfigValuesPromise.then((ok_WheelConfigValues) => {
+      LoginPanel._handleLoginWheelConfigValues(ok_WheelConfigValues);
       Router.updateMainMenu();
       return true;
     }, () => false);
-    runnerStateOrchestrateShowSlsPromise.then((pRunnerStateOrchestrateShowSlsData) => {
-      LoginPanel._handleRunnerStateOrchestrateShowSls(pRunnerStateOrchestrateShowSlsData);
+    runnerStateOrchestrateShowSlsPromise.then((ok_RunnerStateOrchestrateShowSls) => {
+      LoginPanel._handleRunnerStateOrchestrateShowSls(ok_RunnerStateOrchestrateShowSls);
       Router.updateMainMenu();
       return true;
     }, () => false);
+
+    // save for the autocompletion
+    /* eslint-disable no-unused-vars */
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      const minions = ok_WheelKeyListAll.return[0].data.return.minions;
+      Utils.setStorageItem("session", "minions", JSON.stringify(minions));
+    }, (_error_WheelKeyListAll) => {
+      // VOID
+    });
+    /* eslint-enable no-unused-vars */
 
     // allow the success message to be seen
     window.setTimeout(() => {
@@ -391,13 +415,18 @@ export class LoginPanel extends Panel {
     Utils.setStorageItem("session", "reactors", JSON.stringify(reactors));
 
     const pages = wheelConfigValuesData.saltgui_pages;
-    Utils.setStorageItem("session", "pages", JSON.stringify(pages));
-
-    const publicPillars = wheelConfigValuesData.saltgui_public_pillars;
-    Utils.setStorageItem("session", "public_pillars", JSON.stringify(publicPillars));
+    // Filter pages to only current user for privacy
+    const loginResponse = Utils.getStorageItemObject("session", "login_response");
+    if (typeof pages === "object" && loginResponse?.user && loginResponse.user in pages) {
+      const filteredPages = pages[loginResponse.user];
+      Utils.setStorageItem("session", "pages", JSON.stringify(filteredPages));
+    }
 
     const previewGrains = wheelConfigValuesData.saltgui_preview_grains;
     Utils.setStorageItem("session", "preview_grains", JSON.stringify(previewGrains));
+
+    const publicPillars = wheelConfigValuesData.saltgui_public_pillars;
+    Utils.setStorageItem("session", "public_pillars", JSON.stringify(publicPillars));
 
     const ipNumberField = wheelConfigValuesData.saltgui_ipnumber_field;
     Utils.setStorageItem("session", "ipnumber_field", ipNumberField);
@@ -441,16 +470,16 @@ export class LoginPanel extends Panel {
     }
     Utils.setStorageItem("session", "nodegroups", JSON.stringify(nodeGroups));
 
-    const stateVerbose = wheelConfigValuesData.saltgui_state_verbose;
+    const stateVerbose = wheelConfigValuesData.state_verbose;
     Utils.setStorageItem("session", "state_verbose", JSON.stringify(stateVerbose));
 
     const stateCompressIds = wheelConfigValuesData.state_compress_ids;
     Utils.setStorageItem("session", "state_compress_ids", stateCompressIds);
 
-    const stateOutput = wheelConfigValuesData.saltgui_state_output;
+    const stateOutput = wheelConfigValuesData.state_output;
     Utils.setStorageItem("session", "state_output", stateOutput);
 
-    const stateOutputPct = wheelConfigValuesData.saltgui_state_output_pct;
+    const stateOutputPct = wheelConfigValuesData.state_output_pct;
     Utils.setStorageItem("session", "state_output_pct", stateOutputPct);
 
     const outputFormats = wheelConfigValuesData.saltgui_output_formats;
@@ -458,6 +487,9 @@ export class LoginPanel extends Panel {
 
     const dateTimeFractionDigits = wheelConfigValuesData.saltgui_datetime_fraction_digits;
     Utils.setStorageItem("session", "datetime_fraction_digits", JSON.stringify(dateTimeFractionDigits));
+
+    const skipWheelMinionsConnected = wheelConfigValuesData.saltgui_skip_wheel_minions_connected;
+    Utils.setStorageItem("session", "skip_wheel_minions_connected", JSON.stringify(skipWheelMinionsConnected));
 
     const dateTimeRepresentation = wheelConfigValuesData.saltgui_datetime_representation;
     Utils.setStorageItem("session", "datetime_representation", dateTimeRepresentation);
@@ -477,11 +509,19 @@ export class LoginPanel extends Panel {
     const fullReturn = wheelConfigValuesData.saltgui_full_return;
     Utils.setStorageItem("session", "full_return", fullReturn);
 
+    const showAllMenuItems = wheelConfigValuesData.saltgui_show_all_menuitems;
+    Utils.setStorageItem("session", "show_all_menuitems", showAllMenuItems);
+
+    Utils.setStorageItem("session", "select_visible", "false");
+    Utils.setStorageItem("session", "select_minions", ",");
+    Utils.setStorageItem("session", "select_keys", ",");
+    Utils.setStorageItem("session", "select_nodegroups", ",");
+
     const id = wheelConfigValuesData.id;
     const clusterId = wheelConfigValuesData.cluster_id;
     const clusterPeers = wheelConfigValuesData.cluster_peers;
     if (id && clusterId && clusterPeers) {
-      const clusterInfo = "This is node " + id + " from cluster " + clusterId + " " + JSON.stringify(clusterPeers).replace(/"/g, "");
+      const clusterInfo = "This is node " + id + " from cluster " + clusterId + " " + JSON.stringify(clusterPeers).replaceAll("\"", "");
       Utils.setStorageItem("session", "cluster_info", clusterInfo);
     }
 
@@ -496,11 +536,11 @@ export class LoginPanel extends Panel {
     if (typeof error === "string") {
       // something detected before trying to login
       this._showNoticeText("#F44336", error, "notice_login_string_error");
-    } else if (error && error.status === 503) {
+    } else if (error?.status === 503) {
       // Service Unavailable
       // e.g. salt-api running but salt-master not running
       this._showNoticeText("#F44336", error.message, "notice_login_service_unavailable");
-    } else if (error && error.status === -1) {
+    } else if (error?.status === -1) {
       // No permissions: login valid, but no api functions executable
       // e.g. PAM says OK and /etc/salt/master says NO
       this._showNoticeText("#F44336", error.message, "notice_login_other_error");

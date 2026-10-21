@@ -22,9 +22,9 @@ export class SortTable {
   static makeSortable (table) {
     // remove any previous sorting
     let sortfwdind = table.querySelector('#sorttable_sortfwdind');
-    if (sortfwdind) { sortfwdind.parentNode.removeChild(sortfwdind); }
+    if (sortfwdind) { sortfwdind.remove(); }
     let sortrevind = table.querySelector('#sorttable_sortrevind');
-    if (sortrevind) { sortrevind.parentNode.removeChild(sortrevind); }
+    if (sortrevind) { sortrevind.remove(); }
 
     if (table.getElementsByTagName('thead').length === 0) {
       // table doesn't have a tHead. Since it should have, create one and
@@ -60,15 +60,14 @@ export class SortTable {
     const theadrow = clickElement.parentNode;
     for(const cell of theadrow.childNodes) {
       if (cell.nodeType === 1) { // an element
-        if(cell.className.includes("sorttable_sorted")) prev_sorttable_columnindex = cell.sorttable_columnindex;
-        cell.classList.remove("sorttable_sorted_reverse");
-        cell.classList.remove("sorttable_sorted");
+        if(cell.classList.contains("sorttable_sorted")) prev_sorttable_columnindex = cell.sorttable_columnindex;
+        cell.classList.remove("sorttable_sorted", "sorttable_sorted_reverse");
       }
     }
     let sortfwdind = clickElement.parentElement.querySelector('#sorttable_sortfwdind');
-    if (sortfwdind) { sortfwdind.parentNode.removeChild(sortfwdind); }
+    if (sortfwdind) { sortfwdind.remove(); }
     let sortrevind = clickElement.parentElement.querySelector('#sorttable_sortrevind');
-    if (sortrevind) { sortrevind.parentNode.removeChild(sortrevind); }
+    if (sortrevind) { sortrevind.remove(); }
 
     if(prev_sorttable_columnindex !== clickElement.sorttable_columnindex) {
       // pretend reverse sorting when sorting on another column,
@@ -128,31 +127,32 @@ export class SortTable {
     if (node.getAttribute("sorttable_customkey") !== null) {
       return node.getAttribute("sorttable_customkey");
     }
-    else if (typeof node.textContent !== 'undefined' && !hasInputs) {
-      return node.textContent.replace(/^\s+|\s+$/g, '');
+    else if (node.textContent !== undefined && !hasInputs) {
+      return node.textContent.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
     }
-    else if (typeof node.innerText !== 'undefined' && !hasInputs) {
-      return node.innerText.replace(/^\s+|\s+$/g, '');
+    else if (node.innerText !== undefined && !hasInputs) {
+      return node.innerText.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
     }
-    else if (typeof node.text !== 'undefined' && !hasInputs) {
-      return node.text.replace(/^\s+|\s+$/g, '');
+    else if (node.text !== undefined && !hasInputs) {
+      return node.text.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
     }
     else {
       switch (node.nodeType) {
         case 3:
           if (node.nodeName.toLowerCase() === 'input') {
-            return node.value.replace(/^\s+|\s+$/g, '');
+            return node.value.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
           }
-          return node.nodeValue.replace(/^\s+|\s+$/g, '');
+          return node.nodeValue.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
         case 4:
-          return node.nodeValue.replace(/^\s+|\s+$/g, '');
+          return node.nodeValue.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
         case 1:
-        case 11:
-          var innerText = '';
+        case 11: {
+          let innerText = '';
           for (const childNode of node.childNodes) {
             innerText += SortTable.getInnerText(childNode);
           }
-          return innerText.replace(/^\s+|\s+$/g, '');
+          return innerText.replace(/^\s+|\s+$/g, ''); // NOSONAR S8786
+        }
         default:
           return '';
       }
@@ -161,10 +161,7 @@ export class SortTable {
 
   static reverse (tbody) {
     // reverse the rows in a tbody
-    const newrows = [];
-    for (let i=0; i<tbody.rows.length; i++) {
-      newrows[newrows.length] = tbody.rows[i];
-    }
+    const newrows = Array.from(tbody.rows);
     for (let i=newrows.length-1; i>=0; i--) {
       tbody.appendChild(newrows[i]);
     }
@@ -183,9 +180,9 @@ export class SortTable {
     // A stable sort function to allow multi-level sorting of data
     // see: http://en.wikipedia.org/wiki/Cocktail_sort
     // thanks to Joseph Nahmias
-    var b = 0;
-    var t = list.length - 1;
-    var swap = true;
+    let b = 0;
+    let t = list.length - 1;
+    let swap = true;
 
     while(swap) {
         swap = false;

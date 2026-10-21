@@ -1,4 +1,4 @@
-/* global */
+/* global document navigator window */
 
 import {Character} from "../Character.js";
 import {CommandBox} from "../CommandBox.js";
@@ -9,10 +9,10 @@ import {Utils} from "../Utils.js";
 
 export class Panel {
 
-  constructor (pKey, pContextInfo = null) {
+  constructor (pKey, pSelectionSessionKeys = []) {
 
     this.key = pKey;
-    this.contextInfo = pContextInfo;
+    this.selectionSessionKeys = pSelectionSessionKeys;
 
     const div = Utils.createDiv("panel", "", pKey + "-panel");
     this.div = div;
@@ -69,6 +69,25 @@ export class Panel {
       this.key + "-search-button");
     this.div.appendChild(span);
     this.searchButton = span;
+  }
+
+  addFilterButton () {
+    const span = Utils.createSpan(
+      ["filter-button", "small-button", "small-button-left", "small-button-for-click", "no-print"],
+      Character.HEAVY_CHECK_MARK,
+      this.key + "-filter-button");
+    this.div.appendChild(span);
+    span.addEventListener("click", (pClickEvent) => {
+      // remember the new state
+      const selectVisible = !Utils.getStorageItemBoolean("session", "select_visible", false);
+      Utils.setStorageItem("session", "select_visible", selectVisible);
+      // update the table
+      this._showSelectColumn(selectVisible);
+      // update the status line
+      this.updateFooter();
+      // and stop
+      pClickEvent.stopPropagation();
+    });
   }
 
   addPlayPauseButton () {
@@ -176,29 +195,117 @@ export class Panel {
     }
   }
 
+  _toggleSelection (pSessionKey) {
+    let selectedItems = Utils.getStorageItem("session", pSessionKey, ",");
+
+    for (const tr of this.table.tBodies[0].children) {
+      if (tr.dataset.sessionKey !== pSessionKey) {
+        continue;
+      }
+      const td = tr.children[0];
+      if (td.innerText === Character.BALLOT_BOX_UNCHECKED) {
+        td.innerText = Character.BALLOT_BOX_WITH_CHECK;
+        selectedItems += tr.dataset.selectKey + ",";
+      } else {
+        td.innerText = Character.BALLOT_BOX_UNCHECKED;
+        selectedItems = selectedItems.replace("," + tr.dataset.selectKey + ",", ",");
+      }
+    }
+
+    Utils.setStorageItem("session", pSessionKey, selectedItems);
+
+    this.updateFooter();
+  }
+
+  _selectAll (pSessionKey) {
+    let selection = ",";
+
+    for (const tr of this.table.tBodies[0].children) {
+      if (tr.dataset.sessionKey !== pSessionKey) {
+        continue;
+      }
+      const td = tr.children[0];
+      td.innerText = Character.BALLOT_BOX_WITH_CHECK;
+      if (!selection.includes("," + tr.dataset.selectKey + ",")) {
+        // prevent duplicated, e.g. for nodegroups
+        selection += tr.dataset.selectKey + ",";
+      }
+    }
+
+    Utils.setStorageItem("session", pSessionKey, selection);
+
+    this.updateFooter();
+  }
+
+  _selectNone (pSessionKey) {
+    for (const tr of this.table.tBodies[0].children) {
+      if (tr.dataset.sessionKey !== pSessionKey) {
+        continue;
+      }
+      const td = tr.children[0];
+      td.innerText = Character.BALLOT_BOX_UNCHECKED;
+    }
+
+    Utils.setStorageItem("session", pSessionKey, ",");
+
+    this.updateFooter();
+  }
+
+  _selectAllNone (pSessionKey) {
+    for (const tr of this.table.tBodies[0].children) {
+      if (tr.dataset.sessionKey !== pSessionKey) {
+        continue;
+      }
+      const td = tr.children[0];
+      if (td.innerText === Character.BALLOT_BOX_UNCHECKED) {
+        // at least one unchecked --> use select all
+        this._selectAll(pSessionKey);
+        return;
+      }
+    }
+
+    // all were selected --> use select none
+    this._selectNone(pSessionKey);
+  }
+
   addTable (pColumnNames, pFieldList = null) {
     const table = Utils.createElem("table", this.key, "", this.key + "-table");
 
-    if (pColumnNames) {
-      const thead = Utils.createElem("thead");
-      thead.id = this.key + "-table-thead";
-      const tr = Utils.createTr();
-      tr.id = this.key + "-table-thead-tr";
+    const thead = Utils.createElem("thead");
+    thead.id = this.key + "-table-thead";
+    const tr = Utils.createTr();
+    tr.id = this.key + "-table-thead-tr";
 
-      for (const columnName of pColumnNames) {
-        const th = Utils.createElem("th");
-        let cn = columnName;
-        if (cn && cn.startsWith("@")) {
-          cn = cn.substring(1);
+    const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+    for (const columnName of pColumnNames) {
+      const th = Utils.createElem("th");
+      // e.g. "-summary-", "-help-", "-menu-" and "-select-"
+      if (columnName === "-select-") {
+        th.innerText = Character.HEAVY_CHECK_MARK;
+        th.classList.add("tooltip");
+        th.style.cursor = "pointer";
+        if (!selectVisible) {
+          th.style.display = "none";
         }
-        if (cn && !cn.startsWith("-")) {
-          th.innerText = cn;
-        }
-        tr.appendChild(th);
+        Utils.addToolTip(th, "Click here to select all/none\nCTRL-click to invert selection", "bottom-left");
+        th.addEventListener("click", (pClickEvent) => {
+          for (const selectKey of this.selectionSessionKeys) {
+            if (pClickEvent.ctrlKey || pClickEvent.altKey) {
+              this._toggleSelection(selectKey);
+            } else {
+              this._selectAllNone(selectKey);
+            }
+          }
+          pClickEvent.stopPropagation();
+        });
+      } else if (!columnName.startsWith("-")) {
+        th.innerText = columnName;
       }
-      thead.appendChild(tr);
-      table.appendChild(thead);
+      tr.appendChild(th);
     }
+
+    thead.appendChild(tr);
+    table.appendChild(thead);
 
     const tbody = Utils.createElem("tbody");
     // not needed yet
@@ -261,8 +368,8 @@ export class Panel {
 
     // mark columns as click-able
     for (const th of thArr) {
-      if (th.innerText !== "") {
-        th.classList.add("sorttable_sortable");
+      if (th.innerText !== "" && !th.innerText.startsWith(Character.HEAVY_CHECK_MARK)) {
+        th.classList.add("sorttable_sortable", "tooltip");
       }
     }
 
@@ -285,7 +392,9 @@ export class Panel {
     }
   }
 
-  addConsole () {
+  __addConsole () {
+    // Currently unused but present in preparation for branch zzz-reports
+    // This method is called by ReportPanel in the Reports feature
     const console = Utils.createDiv("output", "", this.key + "-output");
     this.div.appendChild(console);
     this.console = console;
@@ -295,21 +404,21 @@ export class Panel {
     const msgDiv = Utils.createDiv("msg", "", this.key + "-msg");
     this.div.appendChild(msgDiv);
     this.msgDiv = msgDiv;
-    this.setMsg("(loading)");
+    this.setMsgTxt("(loading)");
   }
 
-  setMsg (pText) {
-    this.msgTxt = pText;
-    this._updateMsg();
-  }
-
-  _updateMsg () {
-    if (!this.msgDiv) {
-      // the div is not created yet
-      return;
+  setMsgHtml (pHtml) {
+    if (this.msgDiv) {
+      // only update DOM if the div has been created
+      this.msgDiv.innerHTML = pHtml;
     }
+  }
 
-    this.msgDiv.innerHTML = this.msgTxt;
+  setMsgTxt (pText) {
+    if (this.msgDiv) {
+      // only update DOM if the div has been created
+      this.msgDiv.innerText = pText;
+    }
   }
 
   loadMinionsTxt () {
@@ -391,6 +500,13 @@ export class Panel {
     minionTr = Utils.createTr();
     minionTr.id = Utils.getIdFromMinionId(pMinionId);
     minionTr.dataset.minionId = pMinionId;
+    minionTr.dataset.sessionKey = "select_minions";
+    minionTr.dataset.selectKey = pMinionId;
+
+    // optional select button
+    if (this.selectionSessionKeys.includes("select_minions")) {
+      this.addSelectionCheckbox (minionTr, "select_minions");
+    }
 
     // drop down menu
     const menuTd = Utils.createTd();
@@ -416,7 +532,66 @@ export class Panel {
     return minionTr;
   }
 
-  getElement (id) {
+  addSelectionCheckbox (pMinionTr, pSessionKey, pSelectTd = null) {
+    let selectTd;
+    if (pSelectTd) {
+      selectTd = pSelectTd;
+    } else {
+      selectTd = Utils.createTd();
+    }
+    selectTd.style.cursor = "pointer";
+    // one screen may have multiple selection methods, e.g. NodeGroups
+    selectTd._sessionKey = pSessionKey;
+
+    const selectedItems = Utils.getStorageItem("session", pSessionKey, ",");
+    if (selectedItems.includes("," + pMinionTr.dataset.selectKey + ",")) {
+      selectTd.innerText = Character.BALLOT_BOX_WITH_CHECK;
+    } else {
+      selectTd.innerText = Character.BALLOT_BOX_UNCHECKED;
+    }
+
+    const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+    if (!selectVisible) {
+      selectTd.style.display = "none";
+    }
+
+    selectTd.addEventListener("click", (pClickEvent) => {
+      let selectedItems = Utils.getStorageItem("session", pSessionKey, ",");
+      const tr = pClickEvent.target.parentElement;
+      if (pClickEvent.target.innerText === Character.BALLOT_BOX_UNCHECKED) {
+        pClickEvent.target.innerText = Character.BALLOT_BOX_WITH_CHECK;
+        selectedItems += tr.dataset.selectKey + ",";
+      } else {
+        pClickEvent.target.innerText = Character.BALLOT_BOX_UNCHECKED;
+        selectedItems = selectedItems.replace("," + tr.dataset.selectKey + ",", ",");
+      }
+      Utils.setStorageItem("session", pSessionKey, selectedItems);
+
+      // now adjust any duplicate rows (e.g. in nodegroups)
+      for (const tr2 of tr.parentElement.children) {
+        if (tr2 === tr) {
+          continue;
+        }
+        if (tr2.dataset.sessionKey !== tr.dataset.sessionKey) {
+          continue;
+        }
+        if (tr2.dataset.selectKey !== tr.dataset.selectKey) {
+          continue;
+        }
+        tr2.querySelector("td").innerText = pClickEvent.target.innerText;
+      }
+
+      this.updateFooter();
+
+      pClickEvent.stopPropagation();
+    });
+
+    if (!pSelectTd) {
+      pMinionTr.appendChild(selectTd);
+    }
+  }
+
+  getElement (id, pSessionKey, pSelectKey) {
     let minionTr = this.table.querySelector("#" + id);
 
     if (minionTr === null) {
@@ -429,7 +604,15 @@ export class Panel {
 
     // remove existing content
     while (minionTr.firstChild) {
-      minionTr.removeChild(minionTr.firstChild);
+      minionTr.firstChild.remove();
+    }
+
+    minionTr.dataset.sessionKey = pSessionKey;
+    minionTr.dataset.selectKey = pSelectKey;
+
+    // (room for) selection box
+    if (this.selectionSessionKeys.includes(pSessionKey)) {
+      this.addSelectionCheckbox(minionTr, pSessionKey);
     }
 
     // drop down menu
@@ -593,19 +776,23 @@ export class Panel {
     }
   }
 
-  static _copyAddress (pTarget, useMultiAddress) {
-    if (useMultiAddress && pTarget.dataset.multiIpNumber !== pTarget.dataset.singleIpNumber) {
-      navigator.clipboard.writeText(pTarget.dataset.multiIpNumber);
+  static copyAddress (pTarget, useMultiAddress) {
+    if (!navigator.clipboard) {
+      Utils.addToolTip(pTarget, "Clipboard not available\nonly for https or localhost");
+    } else if (useMultiAddress && pTarget.dataset.multiIpNumber !== pTarget.dataset.singleIpNumber) {
+      // clipboard write is fire-and-forget, tooltip shows immediately
+      Utils.ignorePromise(navigator.clipboard.writeText(pTarget.dataset.multiIpNumber));
       Utils.addToolTip(pTarget, "Copied all!");
     } else {
-      navigator.clipboard.writeText(pTarget.dataset.singleIpNumber);
+      // clipboard write is fire-and-forget, tooltip shows immediately
+      Utils.ignorePromise(navigator.clipboard.writeText(pTarget.dataset.singleIpNumber));
       Utils.addToolTip(pTarget, "Copied!");
     }
   }
 
   updateMinion (pMinionData, pMinionId, pAllMinionsGrains) {
 
-    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId));
+    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId), "select_minions", pMinionId);
 
     const minionSpan = Utils.createSpan("minion-id", pMinionId);
     const minionTd = Utils.createTd();
@@ -618,39 +805,7 @@ export class Panel {
     const ipNumberField = Utils.getStorageItem("session", "ipnumber_field", "fqdn_ip4");
     const ipNumberPrefix = Utils.getStorageItemList("session", "ipnumber_prefix");
 
-    const bestIpNumber = Panel._getBestIpNumber(pMinionData, pAllMinionsGrains, ipNumberField, ipNumberPrefix);
-    const allIpNumbers = Panel._getAllIpNumbers(pMinionData, ipNumberField, ipNumberPrefix);
-
-    if (bestIpNumber) {
-      const addressTd = Utils.createTd(["status", "address"]);
-      const addressSpan = Utils.createSpan("", bestIpNumber);
-      addressSpan.dataset.singleIpNumber = bestIpNumber;
-      addressSpan.dataset.multiIpNumber = allIpNumbers.join("\n");
-      addressTd.appendChild(addressSpan);
-      // ipnumbers do not sort well, reformat into something sortable
-      const bestIpNumberParts = bestIpNumber.split(".");
-      let sorttableCustomkey = "";
-      if (bestIpNumberParts.length === 4) {
-        // never mind adding '.'; this is only a sort-key
-        for (let i = 0; i < 4; i++) {
-          sorttableCustomkey += bestIpNumberParts[i].padStart(3, "0");
-        }
-        addressTd.setAttribute("sorttable_customkey", sorttableCustomkey);
-      }
-      addressTd.setAttribute("tabindex", -1);
-      addressSpan.addEventListener("click", (pClickEvent) => {
-        Panel._copyAddress(addressSpan, pClickEvent.ctrlKey || pClickEvent.altKey);
-        pClickEvent.stopPropagation();
-      });
-      addressSpan.addEventListener("mouseout", () => {
-        Panel.restoreClickToCopy(addressSpan);
-      });
-      Panel.restoreClickToCopy(addressSpan);
-      minionTr.appendChild(addressTd);
-    } else {
-      const accepted = Utils.createTd(["status", "accepted"], "accepted");
-      minionTr.appendChild(accepted);
-    }
+    Panel._addAddressColumn(minionTr, pMinionData, pAllMinionsGrains, ipNumberField, ipNumberPrefix);
 
     if (minionTr.dataset.isConnected === "false") {
       Panel.addPrefixIcon(minionSpan, Character.WARNING_SIGN);
@@ -662,12 +817,58 @@ export class Panel {
 
     minionTr.dataset.minionId = pMinionId;
 
+    Panel._addSaltversionColumn(minionTr, pMinionData);
+    Panel._addOsColumn(minionTr, pMinionData);
+  }
+
+  static _addAddressColumn (pMinionTr, pMinionData, pAllMinionsGrains, pIpNumberField, pIpNumberPrefix) {
+    const bestIpNumber = Panel._getBestIpNumber(pMinionData, pAllMinionsGrains, pIpNumberField, pIpNumberPrefix);
+    const allIpNumbers = Panel._getAllIpNumbers(pMinionData, pIpNumberField, pIpNumberPrefix);
+
+    if (bestIpNumber) {
+      const addressTd = Utils.createTd(["status", "address"]);
+      const addressSpan = Utils.createSpan("", bestIpNumber);
+      addressSpan.dataset.singleIpNumber = bestIpNumber;
+      addressSpan.dataset.multiIpNumber = allIpNumbers.join("\n");
+      addressTd.appendChild(addressSpan);
+      Panel._setupAddressCell(addressTd, addressSpan, bestIpNumber);
+      pMinionTr.appendChild(addressTd);
+    } else {
+      const accepted = Utils.createTd(["status", "accepted"], "accepted");
+      pMinionTr.appendChild(accepted);
+    }
+  }
+
+  static _setupAddressCell (pAddressTd, pAddressSpan, pBestIpNumber) {
+    // ipnumbers do not sort well, reformat into something sortable
+    const bestIpNumberParts = pBestIpNumber.split(".");
+    let sorttableCustomkey = "";
+    if (bestIpNumberParts.length === 4) {
+      // never mind adding '.'; this is only a sort-key
+      for (let i = 0; i < 4; i++) {
+        sorttableCustomkey += bestIpNumberParts[i].padStart(3, "0");
+      }
+      pAddressTd.setAttribute("sorttable_customkey", sorttableCustomkey);
+    }
+    pAddressTd.setAttribute("tabindex", -1);
+    // clipboard may not be available, but we warn for that in the click handler
+    pAddressSpan.addEventListener("click", (pClickEvent) => {
+      Panel.copyAddress(pAddressSpan, pClickEvent.ctrlKey || pClickEvent.altKey);
+      pClickEvent.stopPropagation();
+    });
+    pAddressSpan.addEventListener("mouseout", () => {
+      Panel.restoreClickToCopy(pAddressSpan);
+    });
+    Panel.restoreClickToCopy(pAddressSpan);
+  }
+
+  static _addSaltversionColumn (pMinionTr, pMinionData) {
     let saltversion = Character.EM_DASH;
     if (typeof pMinionData === "string") {
       saltversion = "";
-    } else if (pMinionData && pMinionData.saltversion) {
+    } else if (pMinionData?.saltversion) {
       saltversion = pMinionData.saltversion;
-      minionTr.dataset.saltversion = saltversion;
+      pMinionTr.dataset.saltversion = saltversion;
     }
     if (pMinionData) {
       const td = Utils.createTd();
@@ -677,15 +878,17 @@ export class Panel {
       if (typeof pMinionData === "string") {
         Utils.addErrorToTableCell(td, pMinionData);
       }
-      minionTr.appendChild(td);
+      pMinionTr.appendChild(td);
     }
+  }
 
+  static _addOsColumn (pMinionTr, pMinionData) {
     let os = Character.EM_DASH;
     if (typeof pMinionData === "string") {
       os = "";
-    } else if (pMinionData && pMinionData.os && pMinionData.osrelease) {
+    } else if (pMinionData?.os && pMinionData?.osrelease) {
       os = pMinionData.os + " " + pMinionData.osrelease;
-    } else if (pMinionData && pMinionData.os) {
+    } else if (pMinionData?.os) {
       os = pMinionData.os;
     }
     if (pMinionData) {
@@ -694,9 +897,9 @@ export class Panel {
         Utils.addErrorToTableCell(td, pMinionData);
       }
       if (typeof pMinionData === "object" && pMinionData.os) {
-        Panel.addPrefixImage(td, "os-" + pMinionData.os);
+        Panel._addPrefixImage(td, "os-" + pMinionData.os);
       }
-      minionTr.appendChild(td);
+      pMinionTr.appendChild(td);
     }
   }
 
@@ -706,15 +909,8 @@ export class Panel {
     }
 
     const minions = pData.return[0];
-    const minionIds = Object.keys(minions).sort();
-    const minionsDict = Utils.getStorageItemObject("session", "minions-txt");
-
-    // save for the autocompletion
-    // This callback will also be called after LOGOUT due to the regular error handling
-    // Do not store the information in that case
-    if (Utils.getStorageItem("session", "token")) {
-      Utils.setStorageItem("session", "minions", JSON.stringify(minionIds));
-    }
+    const minionIds = Object.keys(minions).sort(Utils.mySortFunction);
+    const minionsDict = Utils.getStorageItemObject("session", "minions_txt");
 
     this.nrOnline = 0;
     this.nrOffline = 0;
@@ -735,7 +931,52 @@ export class Panel {
     this.updateFooter();
   }
 
-  updateFooter (txt = "") {
+  _getFooterForNodeGroups () {
+    if (this.selectionSessionKeys.includes("select_nodegroups")) {
+      const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+      if (selectVisible) {
+        const lst_nodegroups = Utils.getStorageItem("session", "select_nodegroups", null);
+        if (lst_nodegroups !== null && lst_nodegroups !== ",") {
+          // so the "0" case actually does not occur here, adjust count for the extra ','s
+          const nrSelected = lst_nodegroups.split(",").length - 2;
+          return ", " + Utils.txtZeroOneMany(nrSelected, "no selected nodegroups", "{0} selected nodegroup", "{0} selected nodegroups");
+        }
+      }
+    }
+    return "";
+  }
+
+  _getFooterForMinions () {
+    if (this.selectionSessionKeys.includes("select_minions")) {
+      const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+      if (selectVisible) {
+        const lst_minions = Utils.getStorageItem("session", "select_minions", null);
+        if (lst_minions !== null && lst_minions !== ",") {
+          // so the "0" case actually does not occur here, adjust count for the extra ','s
+          const nrSelected = lst_minions.split(",").length - 2;
+          return ", " + Utils.txtZeroOneMany(nrSelected, "no selected minions", "{0} selected minion", "{0} selected minions");
+        }
+      }
+    }
+    return "";
+  }
+
+  _getFooterForKeys () {
+    if (this.selectionSessionKeys.includes("select_keys")) {
+      const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+      if (selectVisible) {
+        const lst_keys = Utils.getStorageItem("session", "select_keys", null);
+        if (lst_keys !== null && lst_keys !== ",") {
+          // so the "0" case actually does not occur here, adjust count for the extra ','s
+          const nrSelected = lst_keys.split(",").length - 2;
+          return ", " + Utils.txtZeroOneMany(nrSelected, "no selected keys", "{0} selected key", "{0} selected keys");
+        }
+      }
+    }
+    return "";
+  }
+
+  updateFooter (txt = "", showUnacceptedKeysCount = true) {
 
     if (this.nrMinions !== undefined) {
       txt += ", " + Utils.txtZeroOneMany(this.nrMinions, "no minions", "{0} minion", "{0} minions");
@@ -749,29 +990,40 @@ export class Panel {
       txt += ", " + Utils.txtZeroOneMany(this.nrOffline, "none offline", "{0} offline", "{0} offline");
     }
 
-    if (this.nrUnaccepted > 0) {
+    if (showUnacceptedKeysCount && this.nrUnaccepted > 0) {
       txt += ", " + Utils.txtZeroOneMany(this.nrUnaccepted, "{0} unaccepted keys", "{0} unaccepted key", "{0} unaccepted keys");
     }
 
+    txt += this._getFooterForNodeGroups();
+    txt += this._getFooterForMinions();
+    txt += this._getFooterForKeys();
+
+    const noprint_b = "<span class='no-print'>";
+    const noprint_e = "</span>";
+
     if (this.playOrPause === "pause" && this.pauseButton) {
+      txt += noprint_b;
       if (this.table && this.table.tBodies[0].rows.length) {
         txt += ", press " + Character.buttonInText(Character.CH_PLAY) + " to continue";
       } else {
         txt += ", press " + Character.buttonInText(Character.CH_PLAY) + " to begin";
       }
+      txt += noprint_e;
     }
 
     if (this.playOrPause === "play" && this.playButton) {
+      txt += noprint_b;
       txt += ", press " + Character.buttonInText(Character.CH_PAUSE) + " to pause";
+      txt += noprint_e;
     }
 
-    txt = txt.replaceAll(/^, /g, "");
+    txt = txt.replace(/^, /g, "");
 
-    this.setMsg(txt.length > 0 ? txt : "(???)");
+    this.setMsgHtml(txt.length > 0 ? txt : "(???)");
   }
 
   updateOfflineMinion (pMinionId, pMinionsDict) {
-    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId));
+    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId), "select_minions", pMinionId);
 
     minionTr.appendChild(Utils.createTd("minion-id", pMinionId));
 
@@ -793,7 +1045,7 @@ export class Panel {
     minionTr.appendChild(offlineTd);
   }
 
-  static makeCommandString (pCommandStringArray) {
+  static _makeCommandString (pCommandStringArray) {
     let commandString = "";
     let separator = "";
     for (const cmd of pCommandStringArray) {
@@ -803,7 +1055,7 @@ export class Panel {
         commandString += JSON.stringify(cmd);
         continue;
       }
-      if (cmd.match(/^[a-z_]+=$/i)) {
+      if (/^[a-z_]+=$/i.test(cmd)) {
         // handle key-value pairs
         const pos = cmd.indexOf("=");
         commandString += cmd.substring(0, pos + 1);
@@ -811,12 +1063,12 @@ export class Panel {
         separator = "";
         continue;
       }
-      if (cmd.match(/^<[a-z]*>$/)) {
+      if (/^<[a-z]*>$/.test(cmd)) {
         // It's a placeholder
         commandString += cmd;
         continue;
       }
-      if (cmd.match(/^[a-z_][a-z0-9_]*(?:[.][a-z0-9_]+)*$/i)) {
+      if (/^[a-z_][a-z0-9_]*(?:[.][a-z0-9_]+)*$/i.test(cmd)) {
         // It's a simple string or a command
         commandString += cmd;
         continue;
@@ -826,10 +1078,18 @@ export class Panel {
     return commandString;
   }
 
-  runCommand (pTargetType, pTargetString, pCommandString) {
+  runCommand (pTargetType, pTargetString, pCommandString, pUseSelections = []) {
     if (typeof pCommandString !== "string") {
       // assume it is an array
-      pCommandString = Panel.makeCommandString(pCommandString);
+      pCommandString = Panel._makeCommandString(pCommandString);
+    }
+
+    // replace with the selection if any
+    if (pUseSelections) {
+      const newtarget = CommandBox.getSelectedItemList(pUseSelections);
+      if (newtarget !== null) {
+        pTargetString = newtarget;
+      }
     }
 
     CommandBox.showManualRun(this.api);
@@ -881,6 +1141,9 @@ export class Panel {
   }
 
   clearPanel () {
+    // whatever the loop was collecting, it was for the previous content
+    this._stopLoop();
+
     if (this.title && this.originalTitle.includes(Character.HORIZONTAL_ELLIPSIS)) {
       this.title.innerText = this.originalTitle;
     }
@@ -888,7 +1151,7 @@ export class Panel {
       this.clearTable();
     }
     if (this.msgDiv) {
-      this.setMsg("(loading)");
+      this.setMsgTxt("(loading)");
     }
     if (this.timeField) {
       this.timeField.innerText = Character.NO_BREAK_SPACE;
@@ -908,11 +1171,38 @@ export class Panel {
     }
   }
 
-  static addPrefixImage (pElem, pImageName) {
+  static getOsImagesToBeInverted () {
+    return [
+      "amazon", "elementary", "elementary-os", "kali", "mageia", "openwrt", "scientificlinux", "steamos"
+    ];
+  }
+
+  static _addPrefixImage (pElem, pImageName) {
     const img = Utils.createElem("img", "prefiximage");
-    const pngName = pImageName.replace(/ /g, "-").toLowerCase() + ".png";
-    img.setAttribute("src", "static/images/" + pngName);
-    img.setAttribute("onerror", "this.onerror=null; this.title='Unknown image, please report to SaltGUI team that image \\'" + pngName + "\\' is missing'; this.src='static/images/UNKNOWN.png'");
+    const pngName = pImageName.replaceAll(" ", "-").toLowerCase() + ".png";
+
+    // Validate that pngName contains only lowercase letters, hyphens, and .png extension
+    if (/^[a-z-]+\.png$/.test(pngName)) {
+      img.setAttribute("src", "static/images/" + pngName);
+      img.setAttribute("alt", pImageName);
+      img.onerror = () => {
+        img.onerror = null;
+        img.title = "Unknown image, please report to SaltGUI team that image '" + pImageName + "' is missing";
+        img.src = "static/images/UNKNOWN.png";
+        img.setAttribute("alt", "Unknown operating system");
+      };
+    } else {
+      img.setAttribute("src", "static/images/UNKNOWN.png");
+      img.setAttribute("alt", "Invalid operating system name");
+      img.title = "Invalid image, please report to SaltGUI team that image name '" + pImageName + "' is invalid";
+    }
+    // Mark OS images that should be inverted in dark mode
+    if (pImageName.startsWith("os-")) {
+      const osName = pImageName.substring(3);
+      if (Panel.getOsImagesToBeInverted().includes(osName)) {
+        img.classList.add("invert-in-dark-mode");
+      }
+    }
     pElem.prepend(img);
   }
 
@@ -926,22 +1216,19 @@ export class Panel {
     }
   }
 
-  hideColumn (colTitle) {
+  hideColumnWhenNone (pColTitle) {
 
     let colNr = -1;
     // find a column with this name
     for (let i = 0; i < this.table.tHead.children[0].children.length; i++) {
       const td = this.table.tHead.children[0].children[i];
-      if (td.innerText === colTitle) {
+      if (td.innerText === pColTitle) {
         colNr = i;
         break;
       }
     }
-    if (colNr < 0) {
-      // column by that name already gone
-      return;
-    }
 
+    // verify whether all values are not interesting
     for (const tr of this.table.tBodies[0].children) {
       const td = tr.children[colNr];
       if (!td.classList.contains("value-none")) {
@@ -951,16 +1238,121 @@ export class Panel {
       }
     }
 
-    // all column-values are trivial, remove the column
+    // all column-values are trivial, hide the column
     // title
     for (const tr of this.table.tHead.children) {
       const td = tr.children[colNr];
-      td.remove();
+      td.style.display = "none";
     }
     // data
     for (const tr of this.table.tBodies[0].children) {
       const td = tr.children[colNr];
-      td.remove();
+      td.style.display = "none";
     }
+  }
+
+  _showSelectColumn (pShow) {
+
+    const colNr = 0;
+
+    // title
+    for (const tr of this.table.tHead.children) {
+      const th = tr.children[colNr];
+      th.style.display = pShow ? "" : "none";
+    }
+    // data
+    for (const tr of this.table.tBodies[0].children) {
+      const td = tr.children[colNr];
+      td.style.display = pShow ? "" : "none";
+    }
+  }
+
+  // Framework for panels that collect their data with a series of api calls.
+  // The owner provides three functions:
+  //   loopInit()       returns the array with the items to process
+  //   loopItem(pItem)  processes one item and returns a promise; the next
+  //                    item starts when that promise settles; resolve to
+  //                    false to end the loop before all items are done
+  //   loopEnd()        called once, after the last item
+  // The owner is usually the panel itself, but it can also be another object
+  // that fills the panel; e.g. one of the issue-providers.
+  // The play/pause button is maintained here and the loop suspends while the
+  // user has pressed pause. The loop stops when the panel is hidden or
+  // cleared; loopEnd is not called in that case.
+
+  startLoop (pOwner, pIntervalMillis) {
+    // never run two loops in the same panel
+    this._stopLoop();
+    this.loopOwner = pOwner;
+    this.loopIntervalMillis = pIntervalMillis;
+    this.loopItems = pOwner.loopInit() || [];
+    this.setPlayPauseButton(this.loopItems.length === 0 ? "none" : "play");
+    this._loopStep();
+  }
+
+  _stopLoop () {
+    if (this.loopTimeout) {
+      // stop the timer when nobody is looking
+      window.clearTimeout(this.loopTimeout);
+    }
+    this.loopTimeout = null;
+    this.loopOwner = null;
+  }
+
+  _loopSchedule (pMillis) {
+    this.loopTimeout = window.setTimeout(() => {
+      this.loopTimeout = null;
+      this._loopStep();
+    }, pMillis);
+  }
+
+  _loopStep () {
+    const owner = this.loopOwner;
+    if (!owner) {
+      // the loop was stopped
+      return;
+    }
+
+    if (this.loopItems.length === 0) {
+      this._stopLoop();
+      this.setPlayPauseButton("none");
+      owner.loopEnd();
+      return;
+    }
+
+    // user can decide to halt screen updates
+    // system can decide to remove the play/pause button
+    if (this.playOrPause !== "play") {
+      // verify again later, without using an item
+      this._loopSchedule(1000);
+      return;
+    }
+
+    const whenDone = (pResult) => {
+      if (this.loopOwner !== owner) {
+        // stopped or restarted while the item was in progress
+        return;
+      }
+      if (pResult === false) {
+        // the owner decided that the other items are no longer needed
+        this.loopItems = [];
+      }
+      this._loopSchedule(this.loopItems.length === 0 ? 0 : this.loopIntervalMillis);
+    };
+
+    // the owner reports its own errors, but when it does not handle
+    // them at all, then at least end the loop properly
+    owner.loopItem(this.loopItems.shift()).then(whenDone, () => whenDone(false));
+  }
+
+  onShow () {
+    const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+    if (this.selectionSessionKeys.includes("select_minions")) {
+      this._showSelectColumn(selectVisible);
+    }
+  }
+
+  onHide () {
+    this._stopLoop();
   }
 }

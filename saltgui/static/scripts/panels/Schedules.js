@@ -6,35 +6,38 @@ import {Utils} from "../Utils.js";
 export class SchedulesPanel extends Panel {
 
   constructor () {
-    super("schedules");
+    super("schedules", ["select_minions"]);
 
     this.addTitle("Schedules");
     this.addSearchButton();
-    this.addTable(["-menu-", "Minion", "Status", "Schedules"]);
+    this.addFilterButton();
+    this.addTable(["-select-", "-menu-", "Minion", "Status", "Schedules"]);
     this.setTableSortable("Minion", "asc");
     this.setTableClickable("page");
     this.addMsg();
   }
 
   onShow () {
+    super.onShow();
+
     const wheelKeyListAllPromise = this.api.getWheelKeyListAll();
     const localScheduleListPromise = this.api.getLocalScheduleList(null);
 
     this.nrMinions = 0;
 
-    wheelKeyListAllPromise.then((pWheelKeyListAllData) => {
-      this._handleSchedulesWheelKeyListAll(pWheelKeyListAllData);
-      localScheduleListPromise.then((pLocalScheduleListData) => {
-        this.updateMinions(pLocalScheduleListData);
+    wheelKeyListAllPromise.then((ok_WheelKeyListAll) => {
+      this._handleSchedulesWheelKeyListAll(ok_WheelKeyListAll);
+      localScheduleListPromise.then((ok_LocalScheduleList) => {
+        this.updateMinions(ok_LocalScheduleList);
         return true;
-      }, (pLocalScheduleListMsg) => {
-        const allMinionsErr = Utils.msgPerMinion(pWheelKeyListAllData.return[0].data.return.minions, JSON.stringify(pLocalScheduleListMsg));
+      }, (_error_LocalScheduleList) => {
+        const allMinionsErr = Utils.msgPerMinion(ok_WheelKeyListAll.return[0].data.return.minions, JSON.stringify(_error_LocalScheduleList));
         this.updateMinions({"return": [allMinionsErr]});
         return false;
       });
       return true;
-    }, (pWheelKeyListAllMsg) => {
-      this._handleSchedulesWheelKeyListAll(JSON.stringify(pWheelKeyListAllMsg));
+    }, (_error_WheelKeyListAll) => {
+      this._handleSchedulesWheelKeyListAll(JSON.stringify(_error_WheelKeyListAll));
       Utils.ignorePromise(localScheduleListPromise);
       return false;
     });
@@ -114,7 +117,7 @@ export class SchedulesPanel extends Panel {
 
     super.updateMinion(pMinionData, pMinionId, pAllMinionsGrains);
 
-    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId));
+    const minionTr = this.getElement(Utils.getIdFromMinionId(pMinionId), "select_minions", pMinionId);
 
     minionTr.appendChild(Utils.createTd("minion-id", pMinionId));
 

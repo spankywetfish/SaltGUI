@@ -1,4 +1,4 @@
-/* global config */
+/* global config EventSource window */
 
 import {Character} from "./Character.js";
 import {CommandBox} from "./CommandBox.js";
@@ -124,6 +124,37 @@ export class API {
     const params = {
       "client": "local",
       "fun": "grains.items"
+    };
+    if (pMinionId) {
+      params["tgt_type"] = "list";
+      params.tgt = pMinionId;
+    } else {
+      params["tgt_type"] = "glob";
+      params.tgt = "*";
+    }
+    return this.apiRequest("POST", "/", params);
+  }
+
+  getLocalMineGet (pMinionId, pMineTarget, pMineItem) {
+    const params = {
+      "arg": [pMineTarget, pMineItem],
+      "client": "local",
+      "fun": "mine.get"
+    };
+    if (pMinionId) {
+      params["tgt_type"] = "list";
+      params.tgt = pMinionId;
+    } else {
+      params["tgt_type"] = "glob";
+      params.tgt = "*";
+    }
+    return this.apiRequest("POST", "/", params);
+  }
+
+  getLocalMineValid (pMinionId) {
+    const params = {
+      "client": "local",
+      "fun": "mine.valid"
     };
     if (pMinionId) {
       params["tgt_type"] = "list";
@@ -353,44 +384,46 @@ export class API {
           return null;
         }
         if (pResponse.status === 401 && pPage !== "/login") {
-          const loginResponseStr = Utils.getStorageItem("session", "login_response");
-          if (!loginResponseStr) {
-            this.logout().then(() => {
-              this.router.goTo("login", {"reason": "no-session"});
-              return true;
-            }, () => {
-              this.router.goTo("login", {"reason": "no-session"});
-              return false;
-            });
-          }
-
-          const loginResponse = JSON.parse(loginResponseStr);
-          // just in case...
-          if (loginResponse) {
-            const now = Date.now() / 1000;
-            const expireValue = loginResponse.expire;
-            if (now > expireValue) {
-              this.logout().then(() => {
-                this.router.goTo("login", {"reason": "session-expired"});
-                return true;
-              }, () => {
-                this.router.goTo("login", {"reason": "session-expired"});
-                return false;
-              });
-            }
-          }
-        }
-        if (pResponse.status === 404 && pPage.endsWith(".txt")) {
-          // ok
-          return "";
+          this._handleUnauthorized();
+          return null;
         }
         throw new HTTPError(pResponse.status, pResponse.statusText);
       });
   }
 
+  _handleUnauthorized () {
+    const loginResponseStr = Utils.getStorageItem("session", "login_response");
+    if (!loginResponseStr) {
+      this.logout().then(() => {
+        this.router.goTo("login", {"reason": "no-session"});
+        return true;
+      }, () => {
+        this.router.goTo("login", {"reason": "no-session"});
+        return false;
+      });
+      return;
+    }
+
+    const loginResponse = JSON.parse(loginResponseStr);
+    // just in case...
+    if (loginResponse) {
+      const now = Date.now() / 1000;
+      const expireValue = loginResponse.expire;
+      if (now > expireValue) {
+        this.logout().then(() => {
+          this.router.goTo("login", {"reason": "session-expired"});
+          return true;
+        }, () => {
+          this.router.goTo("login", {"reason": "session-expired"});
+          return false;
+        });
+      }
+    }
+  }
+
   static getEvents () {
-    const tokenOnSetup = Utils.getStorageItem("session", "token");
-    if (!tokenOnSetup) {
+    // do not attempt event-connection when there is no valid session, e.g. before login or after logout
+    if (!Utils.getStorageItem("session", "token")) {
       return;
     }
 
@@ -402,10 +435,8 @@ export class API {
 
     let source;
     try {
-      /* eslint-disable compat/compat */
-      source = new EventSource(config.API_URL + "/events?token=" + tokenOnSetup);
-      /* eslint-enable compat/compat */
-    } catch (err) {
+      source = new EventSource(config.API_URL + "/events");
+    } catch (err) { // eslint-disable-line no-unused-vars
       Utils.error("Cannot read the Salt-EventBus with this browser version, browser upgrade recommended");
       return;
     }
@@ -444,9 +475,11 @@ export class API {
       const tag = saltEvent.tag;
       const data = saltEvent.data;
 
-      // shorten the public key value when it is present
-      // it is long and boring (so not because it is a secret)
-      // the sizes are so that the first and last 8 characters of the public key are still shown
+      // shorten the public key value when it is present.
+      // because it is long and boring, not because it is a secret.
+      // the sizes are so that the first and last 8 characters of the public key are still shown.
+      // the character counts include "-----BEGIN PUBLIC KEY-----" at the beginning and
+      // include "-----END PUBLIC KEY-----" at the end.
       if (data.pub && data.pub.length > 75) {
         data.pub = data.pub.substring(0, 35) + Character.HORIZONTAL_ELLIPSIS + data.pub.substring(data.pub.length - 33);
       }
@@ -463,23 +496,26 @@ export class API {
       } else if (tag.startsWith("salt/job/") && tag.includes("/ret/")) {
         // return value
         CommandBox.handleSaltJobRetEvent(tag, data);
-        Router.keysPage.handleSaltJobRetEvent(data);
-        Router.jobPage.handleSaltJobRetEvent(data);
-        Router.minionsPage.handleSaltJobRetEvent(data);
-        Router.grainsPage.handleSaltJobRetEvent(data);
-        Router.grainsMinionPage.handleSaltJobRetEvent(data);
-        Router.schedulesPage.handleSaltJobRetEvent(data);
-        Router.schedulesMinionPage.handleSaltJobRetEvent(data);
-        Router.pillarsPage.handleSaltJobRetEvent(data);
-        Router.pillarsMinionPage.handleSaltJobRetEvent(data);
-        Router.beaconsPage.handleSaltJobRetEvent(data);
         Router.beaconsMinionPage.handleSaltJobRetEvent(data);
-        Router.nodegroupsPage.handleSaltJobRetEvent(data);
-        Router.jobsPage.handleSaltJobRetEvent(data);
-        Router.templatesPage.handleSaltJobRetEvent(data);
-        Router.reactorsPage.handleSaltJobRetEvent(data);
+        Router.beaconsPage.handleSaltJobRetEvent(data);
+        Router.grainsMinionPage.handleSaltJobRetEvent(data);
+        Router.grainsPage.handleSaltJobRetEvent(data);
         Router.highStatePage.handleSaltJobRetEvent(data);
         Router.issuesPage.handleSaltJobRetEvent(data);
+        Router.jobPage.handleSaltJobRetEvent(data);
+        Router.jobsPage.handleSaltJobRetEvent(data);
+        Router.keysPage.handleSaltJobRetEvent(data);
+        Router.mineMinionPage.handleSaltJobRetEvent(data);
+        Router.minePage.handleSaltJobRetEvent(data);
+        Router.minionsPage.handleSaltJobRetEvent(data);
+        Router.nodegroupsPage.handleSaltJobRetEvent(data);
+        Router.orchestrationsPage.handleSaltJobRetEvent(data);
+        Router.pillarsMinionPage.handleSaltJobRetEvent(data);
+        Router.pillarsPage.handleSaltJobRetEvent(data);
+        Router.reactorsPage.handleSaltJobRetEvent(data);
+        Router.schedulesMinionPage.handleSaltJobRetEvent(data);
+        Router.schedulesPage.handleSaltJobRetEvent(data);
+        Router.templatesPage.handleSaltJobRetEvent(data);
       } else if (tag.startsWith("salt/job/") && tag.includes("/prog/")) {
         // progress value (exists only for states)
         CommandBox.handleSaltJobProgEvent(tag, data);

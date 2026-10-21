@@ -1,4 +1,4 @@
-/* global */
+/* global document window */
 
 import {Character} from "./Character.js";
 import {Documentation} from "./Documentation.js";
@@ -104,7 +104,7 @@ export class CommandBox {
       // item has one category, return when it matches
       return pTemplate.description + keyboardHint;
     }
-    if (pTemplate.categories && pTemplate.categories.indexOf(CommandBox.templateTmplMenu._templateCategory) >= 0) {
+    if (pTemplate.categories?.includes(CommandBox.templateTmplMenu._templateCategory)) {
       // item has a list of categories, return when one matches
       return pTemplate.description + keyboardHint;
     }
@@ -125,7 +125,7 @@ export class CommandBox {
     CommandBox.templateTmplMenu = menu;
     CommandBox.templateTmplMenu._templateCategory = null;
     const templates = Utils.getStorageItemObject("session", "templates");
-    const keys = Object.keys(templates).sort();
+    const keys = Object.keys(templates).sort(Utils.mySortFunction);
     for (const key of keys) {
       const template = templates[key];
       let description = template["description"];
@@ -135,7 +135,7 @@ export class CommandBox {
       menu.addMenuItem(
         () => CommandBox._templateTmplMenuItemTitle(template),
         () => {
-          CommandBox.applyTemplateByTemplate(template);
+          CommandBox._applyTemplateByTemplate(template);
         }
       );
     }
@@ -147,11 +147,11 @@ export class CommandBox {
 
     txt += "<h2>Target field</h2>";
     txt += "<p>";
-    txt += "Entries that contain a @, (, ) or space are assumed to be a compound target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/#compound-targeting' target='_blank' rel='noopener'>Compound Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Entries that contain a '@', '(', ')' or space are assumed to be a compound target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/#compound-targeting' target='_blank' rel='noopener'>Compound Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
     txt += "Entries that contain a COMMA are assumed to be a list target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/globbing.html#lists' target='_blank' rel='noopener'>List Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
-    txt += "Entries that start with a # are assumed to be a nodegroup target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/nodegroups.html' target='_blank' rel='noopener'>Nodegroup Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
+    txt += "Entries that start with a '#' are assumed to be a nodegroup target selection. See <a href='https://docs.saltproject.io/en/latest/topics/targeting/nodegroups.html' target='_blank' rel='noopener'>Nodegroup Targeting" + Documentation.EXTERNAL_LINK + "</a>.";
     txt += "<br/>";
     txt += "Target '##connected' will immediately be replaced by the latest known list of connected minions.";
     txt += "<br/>";
@@ -255,7 +255,7 @@ export class CommandBox {
       });
   }
 
-  static applyTemplateByProperties (pTargetType, pTarget, pCommand) {
+  static _applyTemplateByProperties (pTargetType, pTarget, pCommand) {
     if (pTargetType) {
       const targetbox = document.getElementById("target-box");
       // show the extended selection controls when
@@ -282,8 +282,8 @@ export class CommandBox {
     }
   }
 
-  static applyTemplateByTemplate (pTemplate) {
-    CommandBox.applyTemplateByProperties(pTemplate.targettype, pTemplate.target, pTemplate.command);
+  static _applyTemplateByTemplate (pTemplate) {
+    CommandBox._applyTemplateByProperties(pTemplate.targettype, pTemplate.target, pTemplate.command);
   }
 
   static applyTemplateByName (pTemplateName) {
@@ -292,10 +292,22 @@ export class CommandBox {
     if (!template) {
       return;
     }
-    CommandBox.applyTemplateByTemplate(template);
+    CommandBox._applyTemplateByTemplate(template);
   }
 
-  static getScreenModifyingCommands () {
+  static _getReadOnlyPanels () {
+    return [
+      "events",
+      "options",
+      "reactors",
+      "stats",
+      "templates"
+    ];
+  }
+
+  static _getScreenModifyingCommands () {
+    // commands marked with "*" can change any page
+    // read-only screens are already filtered out
     return {
       "beacons.add": ["beacons", "beacons-minion"],
       "beacons.delete": ["beacons", "beacons-minion"],
@@ -309,6 +321,9 @@ export class CommandBox {
       "grains.delkey": ["minions", "grains", "grains-minion"],
       "grains.delval": ["minions", "grains", "grains-minion"],
       "grains.setval": ["minions", "grains", "grains-minion"],
+      "mine.delete": ["mine-minion"],
+      "mine.flush": ["mine-minion"],
+      "mine.update": ["mine-minion"],
       "ps.kill_pid": ["job", "jobs"],
       "saltutil.kill_job": ["job", "jobs", "issues"],
       "saltutil.refresh_grains": ["minions", "grains", "grains-minion"],
@@ -323,9 +338,9 @@ export class CommandBox {
       "schedule.enable_job": ["schedules-minion", "issues"],
       "schedule.modify": ["schedules", "schedules-minion"],
       "schedule.run_job": ["*"],
-      "state.apply": ["highstate"],
-      "state.highstate": ["highstate"],
-      "state.sls_id": ["issues"]
+      "state.apply": ["*"],
+      "state.highstate": ["*"],
+      "state.sls_id": ["*"]
     };
   }
 
@@ -361,48 +376,61 @@ export class CommandBox {
     button.disabled = true;
     output.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
 
-    const screenModifyingCommands = CommandBox.getScreenModifyingCommands();
-    // test whether the command may have caused an update to the list
     const command = commandValue.split(" ")[0];
-    if (command in screenModifyingCommands) {
-      // update panel when it may have changed
-      for (const panel of Router.currentPage.panels) {
-        if (screenModifyingCommands[command].indexOf(panel.key) >= 0) {
-          // Arrays.includes() is only available from ES7/2016
-          // the command may have changed a specific panel
-          panel.needsRefresh = true;
-        } else if (screenModifyingCommands[command].indexOf("*") >= 0) {
-          // Arrays.includes() is only available from ES7/2016
-          // the command may have changed any panel
-          panel.needsRefresh = true;
-        }
+    CommandBox._markPanelsForRefresh(command);
+
+    func.then((ok_response) => {
+      if (ok_response) {
+        CommandBox.onRunReturn(ok_response.return[0], commandValue);
+        CommandBox._prepareForAsyncResults(ok_response);
+      } else {
+        CommandBox._showError("null response");
       }
+      return true;
+    }, (_error_response) => {
+      CommandBox._showError(JSON.stringify(_error_response));
+      return false;
+    });
+  }
+
+  static _markPanelsForRefresh (pCommand) {
+    const readOnlyPanels = CommandBox._getReadOnlyPanels();
+    const screenModifyingCommands = CommandBox._getScreenModifyingCommands();
+    // test whether the command may have caused an update to the list
+    if (pCommand in screenModifyingCommands) {
+      CommandBox._markScreenModifyingPanels(pCommand, readOnlyPanels, screenModifyingCommands);
     }
     // update panels that show job-statusses
+    CommandBox._markJobPanels(pCommand);
+  }
+
+  static _markScreenModifyingPanels (pCommand, pReadOnlyPanels, pScreenModifyingCommands) {
+    // update panel when it may have changed
+    for (const panel of Router.currentPage.panels) {
+      if (pReadOnlyPanels.includes(panel.key)) {
+        // nothing changed on this panel
+      } else if (pScreenModifyingCommands[pCommand].includes(panel.key)) {
+        // the command may have changed a specific panel
+        panel.needsRefresh = true;
+      } else if (pScreenModifyingCommands[pCommand].includes("*")) {
+        // the command may have changed any panel
+        panel.needsRefresh = true;
+      }
+    }
+  }
+
+  static _markJobPanels (pCommand) {
     for (const panel of Router.currentPage.panels) {
       if (panel.key !== "job" && panel.key !== "jobs") {
         // panel does not show jobs (or a job)
-      } else if (command.startsWith("wheel.")) {
+      } else if (pCommand.startsWith("wheel.")) {
         // wheel commands do not end up in the jobs list
-      } else if (command.startsWith("runners.")) {
+      } else if (pCommand.startsWith("runners.")) {
         // runners commands do not end up in the jobs list
       } else {
         panel.needsRefresh = true;
       }
     }
-
-    func.then((pResponse) => {
-      if (pResponse) {
-        CommandBox.onRunReturn(pResponse.return[0], commandValue);
-        CommandBox._prepareForAsyncResults(pResponse);
-      } else {
-        CommandBox._showError("null response");
-      }
-      return true;
-    }, (pResponse) => {
-      CommandBox._showError(JSON.stringify(pResponse));
-      return false;
-    });
   }
 
   static onRunReturn (pResponse, pCommand) {
@@ -413,14 +441,105 @@ export class CommandBox {
     } else if (pCommand.startsWith("wheel.")) {
       minions = ["WHEEL"];
     }
-    // do not suppress the jobId (even when we can)
-    Output.addResponseOutput(outputContainer, null, minions, pResponse, pCommand, "done", undefined, undefined);
+    const outputOptions = {
+      initialStatus: "done"
+    };
+    Output.addResponseOutput(outputContainer, minions, pResponse, pCommand, outputOptions);
     const targetField = document.getElementById("target");
     const commandField = document.getElementById("command");
     const button = document.querySelector(".run-command input[type='submit']");
     targetField.disabled = false;
     commandField.disabled = false;
     button.disabled = false;
+  }
+
+  static _getNodegroupsSelection () {
+    const allNodeGroups = Utils.getStorageItemObject("session", "nodegroups");
+    const allNodeGroupsKeys = Object.keys(allNodeGroups);
+
+    let ret = "";
+    const lst_nodegroups = Utils.getStorageItem("session", "select_nodegroups", null);
+    if (lst_nodegroups) {
+      for (const nodegroup of lst_nodegroups.split(",")) {
+        if (nodegroup === "null") {
+          // the spaces around '(' and before ')' are mandatory
+          // salt-api returns 500-InternalServerError when missing
+          // see also https://docs.saltproject.io/en/latest/topics/targeting/compound.html#precedence-matching
+          ret += " or not ( "
+          let grplst = "";
+          for (const grp of allNodeGroupsKeys) {
+            grplst += " or N@" + grp;
+          }
+          // strip the prefix " or "
+          ret += grplst.substring(4) + " )";
+        } else if (nodegroup) {
+          ret += " or N@" + nodegroup;
+        }
+      }
+    }
+    return ret;
+  }
+
+  static _getMinionSelection () {
+    let ret = "";
+    const lst_minions = Utils.getStorageItem("session", "select_minions", null);
+    if (lst_minions) {
+      let minionlist = "";
+      for (const minion of lst_minions.split(",")) {
+        if (minion) {
+          minionlist += "," + minion;
+        }
+      }
+      if (minionlist) {
+        // substring removes the extra ","
+        ret += " or L@" + minionlist.substring(1);
+      }
+    }
+    return ret;
+  }
+
+  static getSelectedItemList (pSessionKeys) {
+    const selectVisible = Utils.getStorageItemBoolean("session", "select_visible", false);
+    if (!selectVisible) {
+      return null;
+    }
+
+    let target = "";
+
+    if (pSessionKeys.includes("select_nodegroups")) {
+      target += CommandBox._getNodegroupsSelection();
+    }
+
+    if (pSessionKeys.includes("select_minions")) {
+      target += CommandBox._getMinionSelection();
+    }
+
+    if (pSessionKeys.includes("select_keys")) {
+      const lst_keys = Utils.getStorageItem("session", "select_keys", null);
+      if (lst_keys) {
+        let keylist = "";
+        for (const key of lst_keys.split(",")) {
+          if (key) {
+            keylist += "," + key;
+          }
+        }
+        // substring removes the extra ","
+        target += " or " + keylist.substring(1);
+      }
+    }
+
+    // remove the extra " or "
+    target = target.substring(4);
+    if (target.startsWith("L@")) {
+      // simplify when we only have the list of minions
+      target = target.substring(2);
+    }
+
+    if (target === "") {
+      return null;
+    }
+
+    return target;
   }
 
   static showManualRun (pApi) {
@@ -445,7 +564,7 @@ export class CommandBox {
     // (re-)populate the dropdown box
     const targetList = document.getElementById("data-list-target");
     while (targetList.firstChild) {
-      targetList.removeChild(targetList.firstChild);
+      targetList.firstChild.remove();
     }
     const nodeGroups = Utils.getStorageItemObject("session", "nodegroups");
 
@@ -453,14 +572,14 @@ export class CommandBox {
     optionConnected.value = "##connected";
     targetList.appendChild(optionConnected);
 
-    for (const nodeGroup of Object.keys(nodeGroups).sort()) {
+    for (const nodeGroup of Object.keys(nodeGroups).sort(Utils.mySortFunction)) {
       const option = Utils.createElem("option");
       option.value = "#" + nodeGroup;
       targetList.appendChild(option);
     }
 
     const minions = Utils.getStorageItemList("session", "minions");
-    for (const minionId of [...minions].sort()) {
+    for (const minionId of [...minions].sort(Utils.mySortFunction)) {
       const option = Utils.createElem("option");
       option.value = minionId;
       targetList.appendChild(option);
@@ -477,6 +596,32 @@ export class CommandBox {
     CommandBox._populateTemplateCatMenu();
     CommandBox._populateTemplateTmplMenu();
     CommandBox._populateTestProviders(pApi);
+
+    let lst = null;
+    // different pages have different selection-types
+    // but run-command is available from every page
+    switch (window.location.hash) {
+    case "#minions":
+    case "#grains":
+    case "#pillars":
+    case "#beacons":
+    case "#schedules":
+    case "#highstate":
+      lst = CommandBox.getSelectedItemList(["select_minions"]);
+      break;
+    case "#keys":
+      lst = CommandBox.getSelectedItemList(["select_keys"]);
+      break;
+    case "#nodegroups":
+      lst = CommandBox.getSelectedItemList(["select_minions", "select_nodegroups"]);
+      break;
+    }
+
+    if (lst) {
+      const targetField = document.getElementById("target");
+      targetField.value = lst;
+      TargetType.autoSelectTargetType(lst);
+    }
   }
 
   static _populateTestProviders (pApi) {
@@ -493,7 +638,7 @@ export class CommandBox {
 
     const localTestProviders = pApi.getLocalTestProviders(target);
     localTestProviders.then((pData) => {
-      Documentation._handleLocalTestProviders(pData);
+      Documentation.handleLocalTestProviders(pData);
     }, () => {
       Documentation.PROVIDERS = {"ERROR": []};
     });
@@ -520,6 +665,7 @@ export class CommandBox {
 
     // The leading # was used to indicate a nodegroup
     if (pTargetType === "nodegroup" && pTarget.startsWith("#")) {
+      // remove the leading "#" as that is not part of the syntax for nodegroups
       pTarget = pTarget.substring(1);
     }
 
@@ -548,24 +694,51 @@ export class CommandBox {
 
     const functionToRun = argsArray.shift();
 
-    if (typeof functionToRun !== "string") {
-      CommandBox._showError("First (unnamed) parameter is the function name, it must be a string, not a " + typeof functionToRun);
+    const validationError = CommandBox._validateFunctionParams(functionToRun, pTarget, pTargetType);
+    if (validationError) {
+      CommandBox._showError(validationError);
       return null;
     }
 
-    // prevent a common spelling error
-    if (functionToRun === "runner" || functionToRun.startsWith("runner.")) {
-      CommandBox._showError("'Runner' commands must be prefixed with 'runners.'");
+    if (functionToRun.startsWith("wheel.") && argsArray.length > 0) {
+      CommandBox._showError("Wheel commands can only take named parameters");
       return null;
+    }
+
+    const fullReturn = pCanUseFullReturn && Utils.getStorageItemBoolean("session", "full_return");
+
+    let params = CommandBox._buildCommandParams(functionToRun, pTarget, pTargetType, argsArray, argsObject, fullReturn);
+
+    const runType = RunType.getRunType();
+    if (!pisRunTypeNormalOnly && runType === "async") {
+      if (params.client !== "local") {
+        CommandBox._showError("Async is not supported for '" + functionToRun + "'");
+        return null;
+      }
+      params.client = "local_async";
+      // return will look like:
+      // { "jid": "20180718173942195461", "minions": [ ... ] }
+    }
+
+    return this.api.apiRequest("POST", "/", params);
+  }
+
+  static _validateFunctionParams (pFunctionToRun, pTarget, pTargetType) {
+    if (typeof pFunctionToRun !== "string") {
+      return "First (unnamed) parameter is the function name, it must be a string, not a " + typeof pFunctionToRun;
+    }
+
+    // prevent a common spelling error
+    if (pFunctionToRun === "runner" || pFunctionToRun.startsWith("runner.")) {
+      return "'Runner' commands must be prefixed with 'runners.'";
     }
 
     // RUNNERS commands do not have a target (MASTER is the target)
     // WHEEL commands also do not have a target
     // but we use the TARGET value to form the usually required MATCH parameter
     // therefore for WHEEL commands it is still required
-    if (pTarget === "" && functionToRun !== "runners" && !functionToRun.startsWith("runners.")) {
-      CommandBox._showError("'Target' field cannot be empty");
-      return null;
+    if (pTarget === "" && pFunctionToRun !== "runners" && !pFunctionToRun.startsWith("runners.")) {
+      return "'Target' field cannot be empty";
     }
 
     // SALT API returns a 500-InternalServerError when it hits an unknown group
@@ -573,65 +746,51 @@ export class CommandBox {
     if (pTargetType === "nodegroup") {
       const nodeGroups = Utils.getStorageItemObject("session", "nodegroups");
       if (!(pTarget in nodeGroups)) {
-        CommandBox._showError("Unknown nodegroup '" + pTarget + "'");
-        return null;
+        return "Unknown nodegroup '" + pTarget + "'";
       }
     }
 
-    const fullReturn = pCanUseFullReturn && Utils.getStorageItemBoolean("session", "full_return");
+    return null;
+  }
 
+  static _buildCommandParams (pFunctionToRun, pTarget, pTargetType, pArgsArray, pArgsObject, pFullReturn) {
     let params = {};
-    if (functionToRun.startsWith("runners.")) {
-      params = argsObject;
+
+    if (pFunctionToRun.startsWith("runners.")) {
+      params = pArgsObject;
       params.client = "runner";
-      params["full_return"] = fullReturn;
+      params["full_return"] = pFullReturn;
       // use only the part after "runners." (8 chars)
-      params.fun = functionToRun.substring(8);
-      if (argsArray.length > 0) {
-        params.arg = argsArray;
+      params.fun = pFunctionToRun.substring(8);
+      if (pArgsArray.length > 0) {
+        params.arg = pArgsArray;
       }
-    } else if (functionToRun.startsWith("wheel.")) {
+    } else if (pFunctionToRun.startsWith("wheel.")) {
       // wheel.key functions are treated slightly different
       // we re-use the "target" field to fill the parameter "match"
       // as used by the salt.wheel.key functions
-      params = argsObject;
+      params = pArgsObject;
       params.client = "wheel";
       // use only the part after "wheel." (6 chars)
-      params.fun = functionToRun.substring(6);
+      params.fun = pFunctionToRun.substring(6);
       params.match = pTarget;
-      if (argsArray.length > 0) {
-        CommandBox._showError("Wheel commands can only take named parameters");
-        return null;
-      }
     } else {
       params.client = "local";
-      params.fun = functionToRun;
+      params.fun = pFunctionToRun;
       params.tgt = pTarget;
-      params["full_return"] = fullReturn;
+      params["full_return"] = pFullReturn;
       if (pTargetType) {
         params["tgt_type"] = pTargetType;
       }
-      if (argsArray.length !== 0) {
-        params.arg = argsArray;
+      if (pArgsArray.length !== 0) {
+        params.arg = pArgsArray;
       }
-      if (Object.keys(argsObject).length > 0) {
-        params.kwarg = argsObject;
-      }
-    }
-
-    const runType = RunType.getRunType();
-    if (!pisRunTypeNormalOnly && runType === "async") {
-      if (params.client === "local" && runType === "async") {
-        params.client = "local_async";
-        // return will look like:
-        // { "jid": "20180718173942195461", "minions": [ ... ] }
-      } else {
-        CommandBox._showError("Async is not supported for '" + functionToRun + "'");
-        return null;
+      if (Object.keys(pArgsObject).length > 0) {
+        params.kwarg = pArgsObject;
       }
     }
 
-    return this.api.apiRequest("POST", "/", params);
+    return params;
   }
 
   static _createNewMinionRow (pMinionId) {
@@ -674,19 +833,20 @@ export class CommandBox {
       output.appendChild(div);
     }
 
-    const isSuccess = Output._getIsSuccess(pData);
+    const isSuccess = Output.getIsSuccess(pData);
     const minionClass = Output.getMinionLabelClass(isSuccess, pData);
 
+    div.classList.remove("output-pending");
+
     const span1 = div.children[0];
-    span1.classList.remove("host-unknown");
     span1.classList.add("minion-id", minionClass);
 
     const span2 = div.children[1];
     span2.innerText = div.children.length > 2 ? ": " : "";
 
-    const anyUnknown = document.querySelector(".host-unknown");
-    if (anyUnknown === null) {
-      // no more unknowns, so there were no unresponsive minions, so stop warnimng for that
+    const anyPending = document.querySelector(".output-pending");
+    if (anyPending === null) {
+      // no more pending, so all minions have responded, therefore stop warning for unresponsive minions
       const unresponsive = document.getElementById("unresponsive");
       unresponsive.style.display = "none";
     }
@@ -702,7 +862,7 @@ export class CommandBox {
 
     const eventJid = part[2];
     const eventMinionId = part[4];
-    const eventSeqNr = parseInt(part[5], 10);
+    const eventSeqNr = Number.parseInt(part[5], 10);
 
     if (CommandBox.jid !== eventJid) {
       // not the job that we are looking at
@@ -727,7 +887,7 @@ export class CommandBox {
     }
 
     const span = div.children[eventSeqNr + 2];
-    Output._setTaskToolTip(span, task);
+    Output.setTaskToolTip(span, task);
   }
 
   static _prepareForAsyncResults (pResponse) {
@@ -763,6 +923,7 @@ export class CommandBox {
     // add new minions list to track progress of this state command
     for (const minionId of CommandBox.minionIds) {
       const div = CommandBox._createNewMinionRow(minionId);
+      div.classList.add("output-pending");
       output.appendChild(div);
     }
 

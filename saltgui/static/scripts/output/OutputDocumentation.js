@@ -6,11 +6,12 @@ import {Utils} from "../Utils.js";
 export class OutputDocumentation {
 
   // test whether the returned data matches the requested data
-  static _isDocuKeyMatch (pKey, pFilterKey) {
+  // (other use is in regression tests)
+  static isDocuKeyMatch (pKey, pFilterKey) {
 
     // user may already have typed the "."
     // but does not know what to type next
-    if (pFilterKey && pFilterKey.endsWith(".")) {
+    if (pFilterKey?.endsWith(".")) {
       pFilterKey = pFilterKey.replace(/[.]$/, "");
     }
 
@@ -34,6 +35,47 @@ export class OutputDocumentation {
   }
 
 
+  static _isValidDocumentationObject (pOutput) {
+    if (!pOutput) {
+      // some commands do not have help-text
+      // e.g. wheel.key.get_key
+      return null;
+    }
+
+    if (typeof pOutput !== "object") {
+      // strange --> no documentation object
+      return false;
+    }
+
+    // arrays are also objects,
+    // but not what we are looking for
+    if (Array.isArray(pOutput)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  static _checkDocumentationMatch (pOutput, pCommandArg) {
+    for (const [key, out] of Object.entries(pOutput)) {
+      // e.g. for "test.rand_str"
+      if (out === null) {
+        continue;
+      }
+
+      // but otherwise it must be a (documentation)string
+      if (typeof out !== "string") {
+        return false;
+      }
+
+      // is this what we were looking for?
+      if (OutputDocumentation.isDocuKeyMatch(key, pCommandArg)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // we only treat output as documentation output when it sticks to strict rules
   // all minions must return strings
   // and when its key matches the requested documentation
@@ -49,55 +91,24 @@ export class OutputDocumentation {
     // too many false positives otherwise
     // actually so limited that no one noticed for 5 years
     // e.g. pillar.items
-    if (["sys.doc", "runners.doc.runner", "runners.doc.wheel"].indexOf(pCommandCmd) < 0) {
+    if (!["sys.doc", "runners.doc.runner", "runners.doc.wheel"].includes(pCommandCmd)) {
       return false;
     }
-
-    let result = false;
 
     // reduce the search key to match the data in the response
     const commandArg = OutputDocumentation._reduceFilterKey(pCommandArg);
 
-    for (const minionId of Object.keys(pResponse)) {
-
-      const output = pResponse[minionId];
-
-      if (!output) {
-        // some commands do not have help-text
-        // e.g. wheel.key.get_key
-        continue;
-      }
-
-      if (typeof output !== "object") {
-        // strange --> no documentation object
+    for (const output of Object.values(pResponse)) {
+      const isValid = OutputDocumentation._isValidDocumentationObject(output);
+      if (isValid === false) {
         return false;
       }
-
-      // arrays are also objects,
-      // but not what we are looking for
-      if (Array.isArray(output)) {
-        return false;
-      }
-
-      for (const key of Object.keys(output)) {
-        // e.g. for "test.rand_str"
-        if (output[key] === null) {
-          continue;
-        }
-
-        // but otherwise it must be a (documentation)string
-        if (typeof output[key] !== "string") {
-          return false;
-        }
-
-        // is this what we were looking for?
-        if (OutputDocumentation._isDocuKeyMatch(key, commandArg)) {
-          result = true;
-        }
+      if (isValid === true && OutputDocumentation._checkDocumentationMatch(output, commandArg)) {
+        return true;
       }
     }
 
-    return result;
+    return false;
   }
 
 
@@ -147,7 +158,7 @@ export class OutputDocumentation {
     pFilterKey = OutputDocumentation._reduceFilterKey(pFilterKey);
 
     let selectedMinion = null;
-    for (const minionId of Object.keys(pResponse)) {
+    for (const [minionId,minionResponse] of Object.entries(pResponse)) {
 
       // When we already found the documentation ignore all others
       if (selectedMinion) {
@@ -157,7 +168,7 @@ export class OutputDocumentation {
 
       // make sure it is an object (instead of e.g. "false" for an offline minion)
       // when it is not, the whole entry is ignored
-      if (!pResponse[minionId] || typeof pResponse[minionId] !== "object") {
+      if (!minionResponse || typeof minionResponse !== "object") {
         delete pResponse[minionId];
         continue;
       }
@@ -165,11 +176,10 @@ export class OutputDocumentation {
       // make sure that the entry matches with the requested command or prefix
       // that's always the case for SYS.DOC output, but not for RUNNERS.DOC.RUNNER
       // and/or RUNNERS.DOC.WHEEL.
-      const minionResponse = pResponse[minionId];
       for (const key of Object.keys(minionResponse)) {
 
         // is this what we were looking for?
-        if (!OutputDocumentation._isDocuKeyMatch(key, pFilterKey)) {
+        if (!OutputDocumentation.isDocuKeyMatch(key, pFilterKey)) {
           // no match, ignore the whole entry
           delete minionResponse[key];
         }
@@ -200,91 +210,90 @@ export class OutputDocumentation {
     }
   }
 
+  static _formatDocumentation (pOut) {
+    // internal links: remove the ".. rubric::" prefix
+    // e.g. in "sys.doc state.apply"
+    pOut = pOut.replace(/[.][.] rubric:: */g, "");
+
+    // internal links: remove prefixes like ":mod:" and ":py:func:"
+    // e.g. in "sys.doc state.apply"
+    pOut = pOut.replace(/(?::[a-z_]*)*:`/g, "`"); // NOSONAR S8786
+
+    // internal links: remove link indicators in highlighted text
+    // e.g. in "sys.doc state.apply"
+    pOut = pOut.replace(/[ \n]*<[^`]*>`/gm, "`"); // NOSONAR S8786
+
+    // turn text into html
+    pOut = pOut.replaceAll("&", "&amp;");
+    pOut = pOut.replaceAll("<", "&lt;");
+    pOut = pOut.replaceAll(">", "&gt;");
+
+    // external links
+    // e.g. in "sys.doc pkg.install"
+    while (pOut.includes(".. _")) {
+      // take only a line containing ".. _"
+      const reference = pOut.
+        replace(/^(?:.|[\n\r])*[.][.] _/m, ""). // NOSONAR S8786
+        replace(/(?:[\n\r])(?:.|[\n\r])*$/m, "");
+      const words = reference.split(": ");
+      if (words.length !== 2) {
+        /* istanbul ignore next */
+        Utils.warn("words", words);
+        /* istanbul ignore next */
+        break;
+      }
+      const link = words[0];
+      const target = words[1];
+      // add link to all references
+      while (pOut.includes(link + "_")) {
+        pOut = pOut.replace(
+          link + "_",
+          "<a href='" + target + "' target='_blank' rel='noopener'>" + link + "</a>");
+      }
+      // remove the item from the link table
+      pOut = pOut.replace(".. _" + reference, "");
+    }
+
+    // replace ``......``
+    // e.g. in "sys.doc state.apply"
+    // named groups are only introduced in ES9/2018
+    pOut = pOut.replace(/``([^`]*)``/g, "<span style='background-color: #575757'>$1</span>");
+
+    // replace `......`
+    // e.g. in "sys.doc state.apply"
+    // named groups are only introduced in ES9/2018
+    pOut = pOut.replace(/`([^`]*)`/g, "<span style='color: yellow'>$1</span>");
+
+    // remove whitespace at end of lines
+    pOut = pOut.replace(/ +\n/gm, ""); // NOSONAR S8786
+
+    // remove duplicate empty lines (usually due to previous rule)
+    pOut = pOut.replace(/\n\n\n*/gm, "\n\n");
+
+    return pOut;
+  }
+
+  static _addDocumentationEntry (pOutputContainer, pKey, pOut) {
+    pOutputContainer.innerHTML +=
+      "<div><span class='minion-id'>" + Utils.escapeHtml(pKey) + "</span>:<br/><pre style='height: initial; overflow-y: initial;'>" + pOut + "</pre></div>";
+  }
+
   // add the output of a documentation command to the display
   static addDocumentationOutput (pOutputContainer, pResponse) {
 
     // we expect no minionIds present
     // as it should have been reduced already
-    for (const minionId of Object.keys(pResponse)) {
+    for (const minionResponse of Object.values(pResponse)) {
 
-      const minionResponse = pResponse[minionId];
-
-      for (const key of Object.keys(minionResponse).sort()) {
-
+      for (const key of Object.keys(minionResponse).sort(Utils.mySortFunction)) {
         let out = minionResponse[key];
+
         if (out === null) {
           continue;
         }
-        out = out.trimRight();
-
-        // internal links: remove the ".. rubric::" prefix
-        // e.g. in "sys.doc state.apply"
-        out = out.replace(/[.][.] rubric:: */g, "");
-
-        // internal links: remove prefixes like ":mod:" and ":py:func:"
-        // e.g. in "sys.doc state.apply"
-        out = out.replace(/(?::[a-z_]*)*:`/g, "`");
-
-        // internal links: remove link indicators in highlighted text
-        // e.g. in "sys.doc state.apply"
-        out = out.replace(/[ \n]*<[^`]*>`/gm, "`");
-
-        // turn text into html
-        // e.g. in "sys.doc cmd.run"
-        out = out.replace(/&/g, "&amp;");
-
-        // turn text into html
-        // e.g. in "sys.doc state.template"
-        out = out.replace(/</g, "&lt;");
-
-        // turn text into html
-        // e.g. in "sys.doc state.template"
-        out = out.replace(/>/g, "&gt;");
-
-        // external links
-        // e.g. in "sys.doc pkg.install"
-        while (out.includes(".. _")) {
-          // take only a line containing ".. _"
-          const reference = out.
-            replace(/^(?:.|\n|\r)*[.][.] _/m, "").
-            replace(/(?:\n|\r)(?:.|\n|\r)*$/m, "");
-          const words = reference.split(": ");
-          if (words.length !== 2) {
-            /* istanbul ignore next */
-            Utils.warn("words", words);
-            /* istanbul ignore next */
-            break;
-          }
-          const link = words[0];
-          const target = words[1];
-          // add link to all references
-          while (out.includes(link + "_")) {
-            out = out.replace(
-              link + "_",
-              "<a href='" + target + "' target='_blank' rel='noopener'>" + link + "</a>");
-          }
-          // remove the item from the link table
-          out = out.replace(".. _" + reference, "");
-        }
-
-        // replace ``......``
-        // e.g. in "sys.doc state.apply"
-        // named groups are only introduced in ES9/2018
-        out = out.replace(/``([^`]*)``/g, "<span style='background-color: #575757'>$1</span>");
-
-        // replace `......`
-        // e.g. in "sys.doc state.apply"
-        // named groups are only introduced in ES9/2018
-        out = out.replace(/`([^`]*)`/g, "<span style='color: yellow'>$1</span>");
-
-        // remove whitespace at end of lines
-        out = out.replace(/  *\n/gm, "");
-
-        // remove duplicate empty lines (usually due to previous rule)
-        out = out.replace(/\n\n\n*/gm, "\n\n");
-
-        pOutputContainer.innerHTML +=
-          "<div><span class='minion-id'>" + key + "</span>:<br/><pre style='height: initial; overflow-y: initial;'>" + out + "</pre></div>";
+        out = out.trimEnd();
+        out = OutputDocumentation._formatDocumentation(out);
+        OutputDocumentation._addDocumentationEntry(pOutputContainer, key, out);
       }
     }
   }

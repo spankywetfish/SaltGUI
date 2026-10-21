@@ -37,11 +37,11 @@ export class GrainsMinionPanel extends Panel {
 
     const localGrainsItemsPromise = useCacheGrains ? this.api.getRunnerCacheGrains(minionId) : this.api.getLocalGrainsItems(minionId);
 
-    localGrainsItemsPromise.then((pLocalGrainsItemsData) => {
-      this._handleLocalGrainsItems(pLocalGrainsItemsData, minionId);
+    localGrainsItemsPromise.then((ok_LocalGrainsItems) => {
+      this._handleLocalGrainsItems(ok_LocalGrainsItems, minionId);
       return true;
-    }, (pLocalGrainsItemsMsg) => {
-      this._handleLocalGrainsItems(JSON.stringify(pLocalGrainsItemsMsg), minionId);
+    }, (_error_LocalGrainsItems) => {
+      this._handleLocalGrainsItems(JSON.stringify(_error_LocalGrainsItems), minionId);
       return false;
     });
   }
@@ -57,15 +57,15 @@ export class GrainsMinionPanel extends Panel {
     }
 
     if (grains === undefined) {
-      this.setMsg("Unknown minion '" + pMinionId + "'");
+      this.setMsgTxt("Unknown minion '" + pMinionId + "'");
       return;
     }
     if (grains === false) {
-      this.setMsg("Minion '" + pMinionId + "' did not answer");
+      this.setMsgTxt("Minion '" + pMinionId + "' did not answer");
       return;
     }
 
-    const grainNames = Object.keys(grains).sort();
+    const grainNames = Object.keys(grains).sort(Utils.mySortFunction);
     for (const grainName of grainNames) {
       const grainTr = Utils.createTr();
 
@@ -97,7 +97,7 @@ export class GrainsMinionPanel extends Panel {
 
     const txt = Utils.txtZeroOneMany(grainNames.length,
       "No grains", "{0} grain", "{0} grains");
-    this.setMsg(txt);
+    this.setMsgTxt(txt);
   }
 
   _addPanelMenuItemGrainsSetValAdd () {

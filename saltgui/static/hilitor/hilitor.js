@@ -15,16 +15,16 @@ function Hilitor(start, id, tag)
   var wordColor = [];
   var colorIdx = 0;
   var matchRegExp = "";
-  var openLeft = false;
-  var openRight = false;
 
-  var nrHilites = 0;
+  this.openLeft = false;
+  this.openRight = false;
+  this.nrHilites = 0;
 
   // characters to strip from start and end of the input string
-  var endRegExp = /^[^\\w]+|[^\\w]+$/g;
+  var endRegExp = /^[^\\w]+|[^\\w]+$/g; // NOSONAR S8786
 
   // characters used to break up the input string into words
-  var breakRegExp = /[^\\w\'-]+/g;
+  var breakRegExp = /[^\\w'-]+/g;
 
   this.setEndRegExp = function(regex) {
     endRegExp = regex;
@@ -64,22 +64,28 @@ function Hilitor(start, id, tag)
   {
     input = input.replace(endRegExp, "");
     input = input.replace(breakRegExp, "|");
-    input = input.replace(/^\||\|$/g, "");
+    // the caller may have used \|, then this fails
+    // input = input.replace(/^\||\|$/g, "");
     if(input) {
       var re = "(?:" + input + ")";
-      if(!this.openLeft) re = "\\b" + re;
-      if(!this.openRight) re = re + "\\b";
-      matchRegExp = new RegExp(re, isCaseSensitive ? "" : "i");
+      if(!this.openLeft) re = "\\b" + re; // NOSONAR S7780
+      if(!this.openRight) re = re + "\\b"; // NOSONAR S7780
+      try {
+        matchRegExp = new RegExp(re, isCaseSensitive ? "" : "i");
+      } catch (err) {
+        console.error("Regexp error: " + re + ": " + err);
+        return null;
+      }
       return matchRegExp;
     }
-    return false;
+    return null;
   };
 
   this.getRegex = function()
   {
     var retval = matchRegExp.toString();
     retval = retval.replace(/(^\/(\\b)?|\(|\)|(\\b)?\/i$)/g, "");
-    retval = retval.replace(/\|/g, " ");
+    retval = retval.replaceAll("|", " ");
     return retval;
   };
 
@@ -101,7 +107,7 @@ function Hilitor(start, id, tag)
       // limit the number of highlighted matches to 25 otherwise the DOM grows rediculously
       // and performance drops with it. and it is still a good first indication.
       let nv, regs;
-      if(this.nrHilites <= 25 && (nv = node.nodeValue) && (regs = matchRegExp.exec(nv)) && regs[0].length > 0) {
+      if(this.nrHilites < 25 && (nv = node.nodeValue) && (regs = matchRegExp.exec(nv)) && regs[0].length > 0) {
         const found = isCaseSensitive ? regs[0] : regs[0].toLowerCase();
         if(!wordColor[found]) {
           wordColor[found] = colors[colorIdx++ % colors.length];

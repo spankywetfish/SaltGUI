@@ -39,11 +39,11 @@ export class PillarsMinionPanel extends Panel {
 
     const localPillarItemsPromise = useCachePillar ? this.api.getRunnerCachePillar(minionId) : this.api.getLocalPillarItems(minionId);
 
-    localPillarItemsPromise.then((pLocalPillarItemsData) => {
-      this._handleLocalPillarItems(pLocalPillarItemsData, minionId);
+    localPillarItemsPromise.then((ok_LocalPillarItems) => {
+      this._handleLocalPillarItems(ok_LocalPillarItems, minionId);
       return true;
-    }, (pLocalPillarItemsMsg) => {
-      this._handleLocalPillarItems(JSON.stringify(pLocalPillarItemsMsg), minionId);
+    }, (_error_LocalPillarItems) => {
+      this._handleLocalPillarItems(JSON.stringify(_error_LocalPillarItems), minionId);
       return false;
     });
   }
@@ -59,11 +59,11 @@ export class PillarsMinionPanel extends Panel {
     }
 
     if (pillars === undefined) {
-      this.setMsg("Unknown minion '" + pMinionId + "'");
+      this.setMsgTxt("Unknown minion '" + pMinionId + "'");
       return;
     }
     if (pillars === false) {
-      this.setMsg("Minion '" + pMinionId + "' did not answer");
+      this.setMsgTxt("Minion '" + pMinionId + "' did not answer");
       return;
     }
 
@@ -79,7 +79,7 @@ export class PillarsMinionPanel extends Panel {
       }
     }
 
-    const keys = Object.keys(pillars).sort();
+    const keys = Object.keys(pillars).sort(Utils.mySortFunction);
     for (const pillarName of keys) {
       const pillar = Utils.createTr();
 
@@ -107,7 +107,7 @@ export class PillarsMinionPanel extends Panel {
 
       // show public pillars immediatelly
       for (const publicPillar of publicPillars) {
-        if (publicPillar && publicPillar.test(pillarName)) {
+        if (publicPillar?.test(pillarName)) {
           // same code as when clicking the hidden value
           pillarHiddenDiv.style.display = "none";
           pillarShownDiv.style.display = "inline-block";
@@ -135,7 +135,7 @@ export class PillarsMinionPanel extends Panel {
 
     const txt = Utils.txtZeroOneMany(keys.length,
       "No pillars", "{0} pillar", "{0} pillars");
-    this.setMsg(txt);
+    this.setMsgTxt(txt);
   }
 
   _addPanelMenuItemSaltUtilRefreshPillar () {

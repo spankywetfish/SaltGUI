@@ -1,21 +1,41 @@
-/* global */
+/* global console process */
 
-import request from "request";
+const url = process.env.DOCKER_URL || "http://localhost:3333/";
+const timeoutMs = 60_000;
+const intervalMs = 1000;
+const start = Date.now();
 
-const url = "http://localhost:3333";
+/* eslint-disable compat/compat */
+/* Promise is not supported in op_mini all */
+const sleep = (ms) => new Promise(resolve => globalThis.setTimeout(resolve, ms));
+/* eslint-enable compat/compat */
 
-console.log("waiting for docker setup to be ready");
+for (;;) {
+  try {
+    /* eslint-disable compat/compat */
+    /* fetch is not supported in op_mini all */
+    const res = await globalThis.fetch(url);
+    /* eslint-enable compat/compat */
 
-const waitfordocker = () => {
-  request.
-    get(url).
-    on("response", () => {
-      console.log("docker setup is ready");
-    }).
-    on("error", (err) => {
-      console.log("docker setup is NOT ready yet:", err.code);
-      setTimeout(waitfordocker, 1000);
-    });
-};
+    if (res.ok) {
+      /* eslint-disable no-console */
+      console.log("Docker service is up");
+      /* eslint-enable no-console */
+      process.exit(0);
+      break;
+    }
+  } catch {
+    // ignore connection errors
+  }
 
-waitfordocker();
+  if (Date.now() - start > timeoutMs) {
+    /* eslint-disable no-console */
+    console.error("Timed out waiting for Docker service");
+    /* eslint-enable no-console */
+    process.exit(1);
+    break;
+  }
+
+  // wait before trying again
+  await sleep(intervalMs);
+}

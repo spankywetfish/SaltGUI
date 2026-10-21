@@ -1,6 +1,8 @@
 /* global */
 
 import {BeaconsIssues} from "../issues/Beacons.js";
+import {CveIssues} from "../issues/CVEs.js";
+import {FullReturnIssues} from "../issues/FullReturn.js";
 import {JobsRunningIssues} from "../issues/JobsRunning.js";
 import {KeysIssues} from "../issues/Keys.js";
 import {NotConnectedIssues} from "../issues/NotConnected.js";
@@ -34,12 +36,16 @@ export class IssuesPanel extends Panel {
     // the data in random order
     // this.setTableSortable("Description", "asc");
 
+    this.existingIssueKeys = new Set();
+
     this.keysIssues = new KeysIssues();
     this.jobsIssues = new JobsRunningIssues();
     this.beaconsIssues = new BeaconsIssues();
     this.schedulesIssues = new SchedulesIssues();
     this.notConnectedIssues = new NotConnectedIssues();
     this.lowStateIssues = new StateIssues();
+    this.cveIssues = new CveIssues();
+    this.fullReturnIssues = new FullReturnIssues();
   }
 
   updateFooter () {
@@ -48,33 +54,27 @@ export class IssuesPanel extends Panel {
   }
 
   onShow () {
+    this.existingIssueKeys.clear();
+
     const p1 = this.keysIssues.onGetIssues(this);
     const p2 = this.jobsIssues.onGetIssues(this);
     const p3 = this.beaconsIssues.onGetIssues(this);
     const p4 = this.schedulesIssues.onGetIssues(this);
     const p5 = this.notConnectedIssues.onGetIssues(this);
     const p6 = this.lowStateIssues.onGetIssues(this);
+    const p7 = this.cveIssues.onGetIssues(this);
+    const p8 = this.fullReturnIssues.onGetIssues(this);
 
     /* eslint-disable compat/compat */
     /* Promise.all is not supported in op_mini all, IE 11 */
-    const allPromise = Promise.all([p1, p2, p3, p4, p5, p6]);
+    const allPromise = Promise.all([p1, p2, p3, p4, p5, p6, p7, p8]);
     /* eslint-enable compat/compat */
     allPromise.then(() => {
-      // VOID
-    }, (pErrorMsg) => {
-      this.setMsg("(error)");
-      Utils.addToolTip(this.msgDiv, pErrorMsg);
+      this.setTableSortable("Description", "asc");
+    }, (_error_Error) => {
+      this.setMsgTxt("(error)");
+      Utils.addToolTip(this.msgDiv, _error_Error);
     });
   }
 
-  onHide () {
-    // from StateIssues
-    this.jobs = null;
-
-    if (this.issuesStateTimeout) {
-      // stop the timer when nobody is looking
-      window.clearTimeout(this.issuesStateTimeout);
-      this.issuesStateTimeout = null;
-    }
-  }
 }

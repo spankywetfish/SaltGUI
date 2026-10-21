@@ -1,4 +1,4 @@
-/* global */
+/* global document */
 
 // documentation utilities
 
@@ -31,7 +31,7 @@ export class Documentation {
       () => Documentation._manualRunMenuCustomHelpRun());
 
     Documentation.DOCUMENTATION_URL = "https://docs.saltproject.io/en/latest/ref/";
-    Documentation.EXTERNAL_LINK = Character.NO_BREAK_SPACE + Character.EXTERNAL_LINK_IMG;
+    Documentation.EXTERNAL_LINK = Character.NO_BREAK_SPACE + "<span style='font-size:150%'>" + Character.HEAVY_NORTH_EAST_ARROW + "</span>";
 
     Documentation.PROVIDERS = { };
   }
@@ -59,7 +59,7 @@ export class Documentation {
       return null;
     }
 
-    const cmdFragments = Documentation.getKeywordFragments(commandLine);
+    const cmdFragments = Documentation._getKeywordFragments(commandLine);
 
     const category = cmdFragments.shift();
     let arg = "";
@@ -126,21 +126,20 @@ export class Documentation {
     if (func === null) {
       return;
     }
-    func.then((pResponse) => {
-      CommandBox.onRunReturn(pResponse.return[0], dummyCommand);
+    func.then((ok_response) => {
+      CommandBox.onRunReturn(ok_response.return[0], dummyCommand);
       return true;
-    }, (pResponse) => {
-      CommandBox.onRunReturn("DOCUMENTATION ERROR:\n\n" + JSON.stringify(pResponse), dummyCommand);
+    }, (_error_response) => {
+      CommandBox.onRunReturn("DOCUMENTATION ERROR:\n\n" + JSON.stringify(_error_response), dummyCommand);
       return false;
     });
   }
 
   // ONLINE DOCUMENTATION
 
-  static _handleLocalTestProviders (data) {
+  static handleLocalTestProviders (data) {
     const providerlists = data.return[0];
     for (const host in providerlists) {
-
       // did we (not) get an answer from the minion?
       if (!providerlists[host]) {
         continue;
@@ -148,55 +147,52 @@ export class Documentation {
 
       const providerlist = providerlists[host];
       for (let key in providerlist) {
-
         const value = providerlist[key];
-
-        // Some Windows minions report module names
-        // with this extra part, remove it
-        if (key.endsWith(".cpython-35")) {
-          key = key.substring(0, key.length - 11);
-        }
-
-        // This seems to be returned for the 'vsphere' module.
-        // That is clearly a wrong answer, fix it.
-        // See also https://github.com/saltstack/salt/issues/49332.
-        if (key === "__init__" && value === "vsphere") {
-          key = "vsphere";
-        }
-
-        // This is sometimes returned for the 'win_pkg' module.
-        // That is clearly a wrong answer, fix it.
-        if (key === "functools" && value === "pkg") {
-          key = "win_pkg";
-        }
-
-        // This is sometimes returned for the 'win_lgpo' module.
-        // That is clearly a wrong answer, fix it.
-        if (key === "configparser" && value === "lgpo") {
-          key = "win_lgpo";
-        }
-
-        // This is seems to be returned for the 'travisci' module.
-        // That is clearly a wrong answer, fix it.
-        if ((key === "parse" || key === "urlparse") && value === "travisci") {
-          key = "travisci";
-        }
-
-        // create an initial empty mapping
-        if (!Documentation.PROVIDERS[value]) {
-          Documentation.PROVIDERS[value] = [];
-        }
-
-        // add the new mapping, prevent duplicates as
-        // multiple minions provide (almost) the same answers
-        if (Documentation.PROVIDERS[value].indexOf(key) < 0) {
-          Documentation.PROVIDERS[value].push(key);
-        }
+        const correctedKey = Documentation._correctProviderKey(key, value);
+        Documentation._addProvider(value, correctedKey);
       }
     }
   }
 
-  static getKeywordFragments (pCommandLine) {
+  static _correctProviderKey (key, value) {
+    // Some Windows minions report module names with extra parts
+    if (key.endsWith(".cpython-35")) {
+      key = key.substring(0, key.length - 11);
+    }
+
+    // Correct known misreported keys
+    const corrections = {
+      "__init__,vsphere": "vsphere",
+      "configparser,lgpo": "win_lgpo",
+      "functools,pkg": "win_pkg"
+    };
+
+    const correction = corrections[key + "," + value];
+    if (correction) {
+      return correction;
+    }
+
+    // Check for travisci module misreporting
+    if ((key === "parse" || key === "urlparse") && value === "travisci") {
+      return "travisci";
+    }
+
+    return key;
+  }
+
+  static _addProvider (value, key) {
+    // Create initial empty mapping if needed
+    if (!Documentation.PROVIDERS[value]) {
+      Documentation.PROVIDERS[value] = [];
+    }
+
+    // Add the provider, preventing duplicates
+    if (!Documentation.PROVIDERS[value].includes(key)) {
+      Documentation.PROVIDERS[value].push(key);
+    }
+  }
+
+  static _getKeywordFragments (pCommandLine) {
 
     const argsArray = [];
     const argsObject = {};
@@ -212,7 +208,7 @@ export class Documentation {
       return ["modules"];
     }
 
-    let cmd = argsArray[0].replace(/[.]*$/, "").split(".");
+    let cmd = argsArray[0].replace(/[.]*$/, "").split("."); // NOSONAR S8786
 
     // re-organize the command with its formal category
     switch (cmd[0]) {
@@ -238,33 +234,49 @@ export class Documentation {
 
   static _manualRunMenuHtmlDocPrepare () {
     const commandLine = document.querySelector(".run-command #command").value;
-    const cmd = Documentation.getKeywordFragments(commandLine);
+    const cmd = Documentation._getKeywordFragments(commandLine);
     return "Online reference for '" + cmd.join(".").replace(/^modules[.]/, "") + "'";
   }
 
   static _manualRunMenuHtmlDocRun () {
     const commandLine = document.querySelector(".run-command #command").value;
-    const cmd = Documentation.getKeywordFragments(commandLine);
+    const cmd = Documentation._getKeywordFragments(commandLine);
 
-    // title line
     let html = "";
-    html += "<h3>Documentation for '" + cmd.join(".").replace(/^modules[.]/, "") + "':</h3>";
+    // title line
+    html += "<h3>Documentation for '" + Utils.escapeHtml(cmd.join(".").replace(/^modules[.]/, "")) + "':</h3>";
 
     // level 0
-    html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "' target='_blank' rel='noopener'>Salt Module Reference</a>" + Documentation.EXTERNAL_LINK + "</p>";
+    html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "' target='_blank' rel='noopener'>Salt Module Reference" + Documentation.EXTERNAL_LINK + "</a></p>";
 
+    html += Documentation._buildLevel1Docs(cmd);
+    html += Documentation._buildModulesSection(cmd);
+    html += Documentation._buildSpecialModulesSection(cmd);
+
+    const argsArray = [];
+    const argsObject = {};
+    ParseCommandLine.parseCommandLine(commandLine, argsArray, argsObject);
+    html += Documentation._buildBeaconDetailsSection(cmd, argsArray);
+
+    const output = document.querySelector(".run-command pre");
+    output.innerHTML = html;
+  }
+
+  static _buildLevel1Docs (cmd) {
     // level 1
-    // Function getKeywordFragments makes sure that
+    // Function _getKeywordFragments makes sure that
     // the cmd array has at least one element.
     // The default is "modules"
-    let pageTitle = "All '" + cmd[0] + "' modules";
+    let pageTitle = "All '" + Utils.escapeHtml(cmd[0]) + "' modules";
     if (cmd[0] === "modules") {
       // the page title is different for this page
       // the link to the page must use the same title
       pageTitle = "All 'execution' modules";
     }
-    html += "<p><a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/index.html' target='_blank' rel='noopener'>" + pageTitle + "</a>" + Documentation.EXTERNAL_LINK + "</p>";
+    return "<p><a href='" + Documentation.DOCUMENTATION_URL + Utils.escapeHtml(cmd[0]) + "/all/index.html' target='_blank' rel='noopener'>" + Utils.escapeHtml(pageTitle) + Documentation.EXTERNAL_LINK + "</a></p>";
+  }
 
+  static _buildModulesSection (cmd) {
     // When the module is a virtual module, we want
     // to show all relevant concrete modules
     // only 'modules' can have virtual modules as these
@@ -274,90 +286,114 @@ export class Documentation {
     // Also note that some commands are named differently
     // in their implementation. e.g. "cmd.run" is actually "cmdmod.run".
     // This translation serves both purposes.
-    let concreteModules = [];
-    if (cmd.length >= 2) {
+    if (cmd.length < 2) {
+      return "";
+    }
 
-      // only 'modules' has a translation table
-      // other categories are taken literal
-      if (cmd[0] === "modules") {
-        concreteModules = Documentation.PROVIDERS[cmd[1]];
-        if (!concreteModules) {
-          concreteModules = [];
-        }
-      } else {
-        concreteModules = [cmd[1]];
-      }
+    let html = "";
+    let concreteModules = Documentation._getConcreteModulesForCmd(cmd);
 
-      if (Object.keys(Documentation.PROVIDERS).length === 0) {
-        html += "<p>The documentation index has not been retrieved yet. We'll just assume this is a regular command.</p>";
-        concreteModules = [cmd[1]];
-      } else if ("SKIPPED" in Documentation.PROVIDERS) {
-        html += "<p>The documentation index is skipped on this system. We'll just assume this is a regular command.</p>";
-        concreteModules = [cmd[1]];
-      } else if ("ERROR" in Documentation.PROVIDERS) {
-        html += "<p>The documentation index could not be retrieved. We'll just assume this is a regular command.</p>";
-        concreteModules = [cmd[1]];
-      }
+    const providerWarning = Documentation._getProviderWarning();
+    if (providerWarning) {
+      html += providerWarning;
+      concreteModules = [cmd[1]];
+    }
 
-      switch (concreteModules.length) {
-      case 0:
-        html += "<p>'" + cmd[1] + "' is an unknown module name. We'll just assume it actually exists. The links below (if any) might not work.</p>";
-        break;
-      case 1:
-        // simple modules case
-        // wheel/runners cases are always simple
-        if (cmd[0] !== "modules") {
-          html += "<p>Module-name '" + cmd[0] + "." + cmd[1] + "' cannot be verified. We'll just assume it actually exists. The links below might not work.</p>";
-        } else if (cmd[1] !== concreteModules[0]) {
-          html += "<p>The internal name for '" + cmd[1] + "' is '" + concreteModules[0] + "'.</p>";
-        }
-        break;
-      default:
-        html += "<p>" + concreteModules.length + " variations of this module seem to be used. These all listed below.</p>";
+    html += Documentation._buildConcreteModulesMessage(cmd, concreteModules);
+    html += Documentation._buildModuleAndFunctionLinks(cmd, concreteModules);
+    html += Documentation._buildVirtualModuleLink(cmd);
+
+    return html;
+  }
+
+  static _getConcreteModulesForCmd (cmd) {
+    // only 'modules' has a translation table
+    // other categories are taken literal
+    if (cmd[0] === "modules") {
+      return Documentation.PROVIDERS[cmd[1]] || [];
+    }
+    return [cmd[1]];
+  }
+
+  static _getProviderWarning () {
+    if (Object.keys(Documentation.PROVIDERS).length === 0) {
+      return "<p>The documentation index has not been retrieved yet. We'll just assume this is a regular command.</p>";
+    }
+    if ("SKIPPED" in Documentation.PROVIDERS) {
+      return "<p>The documentation index is skipped on this system. We'll just assume this is a regular command.</p>";
+    }
+    if ("ERROR" in Documentation.PROVIDERS) {
+      return "<p>The documentation index could not be retrieved. We'll just assume this is a regular command.</p>";
+    }
+    return "";
+  }
+
+  static _buildConcreteModulesMessage (cmd, concreteModules) {
+    switch (concreteModules.length) {
+    case 0:
+      return "<p>'" + Utils.escapeHtml(cmd[1]) + "' is an unknown module name. We'll just assume it actually exists. The links below (if any) might not work.</p>";
+    case 1:
+      // simple modules case
+      // wheel/runners cases are always simple
+      if (cmd[0] !== "modules") {
+        return "<p>Module-name '" + Utils.escapeHtml(cmd[0]) + "." + Utils.escapeHtml(cmd[1]) + "' cannot be verified. We'll just assume it actually exists. The links below might not work.</p>";
       }
+      if (cmd[1] !== concreteModules[0]) {
+        return "<p>The internal name for '" + Utils.escapeHtml(cmd[1]) + "' is '" + Utils.escapeHtml(concreteModules[0]) + "'.</p>";
+      }
+      return "";
+    default:
+      return "<p>" + concreteModules.length + " variations of this module seem to be used. These all listed below.</p>";
+    }
+  }
+
+  static _buildModuleAndFunctionLinks (cmd, concreteModules) {
+    if (cmd.length < 2) {
+      return "";
     }
 
     // See https://docs.saltproject.io/en/latest/ref/modules/all/index.html
-    const knownVirtualModules = [
-      "group",
-      "kernelpkg",
-      "pkg",
-      "service",
-      "shadow",
-      "user"
-    ];
-
-    let indent = "";
-    if (concreteModules.length > 1) {
-      // only useful to indent level 3 information
-      // when there are multiple instances available
-      indent = Character.NO_BREAK_SPACE + Character.NO_BREAK_SPACE;
-    }
+    const indent = concreteModules.length > 1 ? Character.NO_BREAK_SPACE + Character.NO_BREAK_SPACE : "";
+    let html = "";
 
     for (const concreteModule of concreteModules) {
-
       // level 2
       if (cmd.length >= 2) {
-        html += "<p><a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + concreteModule + ".html' target='_blank' rel='noopener'>Module '" + (cmd[0] + "." + concreteModule).replace(/^modules[.]/, "") + "'</a>" + Documentation.EXTERNAL_LINK + "</p>";
+        html += "<p><a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + concreteModule + ".html' target='_blank' rel='noopener'>Module '" + (cmd[0] + "." + concreteModule).replace(/^modules[.]/, "") + "'" + Documentation.EXTERNAL_LINK + "</a></p>";
       }
 
       // level 3
       if (cmd.length >= 3) {
         html += "<p>Function-name '" + cmd[2] + "' cannot be verified here. We'll just assume it actually exists. The link below might not work.</p>";
-        html += "<p>" + indent + "<a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + concreteModule + ".html#salt." + cmd[0] + "." + concreteModule + "." + cmd[2] + "' target='_blank' rel='noopener'>Function '" + (cmd[0] + "." + concreteModule + "." + cmd[2]).replace(/^modules[.]/, "") + "'</a>" + Documentation.EXTERNAL_LINK + "</p>";
+        html += "<p>" + indent + "<a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + concreteModule + ".html#salt." + cmd[0] + "." + concreteModule + "." + cmd[2] + "' target='_blank' rel='noopener'>Function '" + (cmd[0] + "." + concreteModule + "." + cmd[2]).replace(/^modules[.]/, "") + "'" + Documentation.EXTERNAL_LINK + "</a></p>";
       }
     }
 
-    if (cmd.length >= 2 && cmd[0] === "modules" && knownVirtualModules.indexOf(cmd[1]) >= 0) {
-      html += "<p>The link below is the overview page of all related virtual package modules.</p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + cmd[1] + ".html' target='_blank' rel='noopener'>'" + cmd[0] + "." + cmd[1] + "' modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+    return html;
+  }
+
+  static _buildVirtualModuleLink (cmd) {
+    // See https://docs.saltproject.io/en/latest/ref/modules/all/index.html
+    const knownVirtualModules = ["group", "kernelpkg", "pkg", "service", "shadow", "user"];
+
+    if (cmd.length >= 2 && cmd[0] === "modules" && knownVirtualModules.includes(cmd[1])) {
+      return "<p>The link below is the overview page of all related virtual package modules.</p>" +
+        "<p><a href='" + Documentation.DOCUMENTATION_URL + cmd[0] + "/all/salt." + cmd[0] + "." + cmd[1] + ".html' target='_blank' rel='noopener'>'" + cmd[0] + "." + cmd[1] + "' modules" + Documentation.EXTERNAL_LINK + "</a></p>";
+    }
+    return "";
+  }
+
+  static _buildSpecialModulesSection (cmd) {
+    if (cmd.length < 2 || cmd[0] !== "modules") {
+      return "";
     }
 
-    // grains?
+    let html = "";
 
-    if (cmd.length >= 2 && cmd[0] === "modules" && cmd[1] === "grains") {
+    // grains?
+    if (cmd[1] === "grains") {
       html += "<p>It looks you are using grains. The link below gives the overview of the grains modules. </p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "grains/all/index.html' target='_blank' rel='noopener'>Grains Modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "grains/all/index.html' target='_blank' rel='noopener'>Grains Modules" + Documentation.EXTERNAL_LINK + "</a></p>";
     }
     // no action for first parameter
     // there are extra pages for grains-functions,
@@ -365,10 +401,9 @@ export class Documentation {
     // and not for individual grains
 
     // pillars?
-
-    if (cmd.length >= 2 && cmd[0] === "modules" && cmd[1] === "pillar") {
+    if (cmd[1] === "pillar") {
       html += "<p>It looks you are using pillars. The link below gives the overview of the pillar modules. </p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "pillar/all/index.html' target='_blank' rel='noopener'>Pillar Modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "pillar/all/index.html' target='_blank' rel='noopener'>Pillar Modules" + Documentation.EXTERNAL_LINK + "</a></p>";
     }
     // no action for first parameter
     // there are extra pages for pillar-functions,
@@ -376,10 +411,9 @@ export class Documentation {
     // and not for individual pillars
 
     // states?
-
-    if (cmd.length >= 2 && cmd[0] === "modules" && cmd[1] === "state") {
+    if (cmd[1] === "state") {
       html += "<p>It looks you are using states. The link below gives the overview of the state modules. </p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "states/all/index.html' target='_blank' rel='noopener'>State Modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "states/all/index.html' target='_blank' rel='noopener'>State Modules" + Documentation.EXTERNAL_LINK + "</a></p>";
     }
     // no action for first parameter
     // there are extra pages for state-functions,
@@ -387,10 +421,9 @@ export class Documentation {
     // and not for individual states
 
     // cloud?
-
-    if (cmd.length >= 2 && cmd[0] === "modules" && cmd[1] === "cloud") {
+    if (cmd[1] === "cloud") {
       html += "<p>It looks you are using cloud. The link below gives the overview of the cloud modules. </p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "clouds/all/index.html' target='_blank' rel='noopener'>Cloud Modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "clouds/all/index.html' target='_blank' rel='noopener'>Cloud Modules" + Documentation.EXTERNAL_LINK + "</a></p>";
     }
     // no action for first parameter
     // there are extra pages for cloud-functions,
@@ -398,26 +431,27 @@ export class Documentation {
     // and not for individual clouds
 
     // beacons?
-
-    if (cmd.length >= 2 && cmd[0] === "modules" && cmd[1] === "beacons") {
+    if (cmd[1] === "beacons") {
       html += "<p>It looks you are using beacons. The link below gives the overview of the beacons modules. </p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "beacons/all/index.html' target='_blank' rel='noopener'>Beacon Modules</a>" + Documentation.EXTERNAL_LINK + "</p>";
+      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "beacons/all/index.html' target='_blank' rel='noopener'>Beacon Modules" + Documentation.EXTERNAL_LINK + "</a></p>";
     }
 
+    return html;
+  }
+
+  static _buildBeaconDetailsSection (cmd, argsArray) {
     // also provide information about individual beacons
-
-    const argsArray = [];
-    const argsObject = {};
-    ParseCommandLine.parseCommandLine(commandLine, argsArray, argsObject);
-
-    if (cmd.length >= 3 && cmd[0] === "modules" && cmd[1] === "beacons" && ["add", "modify"].indexOf(cmd[2]) >= 0 && argsArray.length >= 2 && typeof argsArray[1] === "string") {
-      const beaconName = argsArray[1];
-      html += "<p>Beacon-name '" + beaconName + "' cannot be verified. We'll just assume it actually exists. The link below might not work.</p>";
-      html += "<p><a href='" + Documentation.DOCUMENTATION_URL + "beacons/all/salt.beacons." + beaconName + ".html' target='_blank' rel='noopener'>Beacon Module '" + beaconName + "'</a>" + Documentation.EXTERNAL_LINK + "</p>";
+    if (cmd.length < 3 || cmd[0] !== "modules" || cmd[1] !== "beacons") {
+      return "";
     }
 
-    const output = document.querySelector(".run-command pre");
-    output.innerHTML = html;
+    if (!["add", "modify"].includes(cmd[2]) || argsArray.length < 2 || typeof argsArray[1] !== "string") {
+      return "";
+    }
+
+    const beaconName = argsArray[1];
+    return "<p>Beacon-name '" + Utils.escapeHtml(beaconName) + "' cannot be verified. We'll just assume it actually exists. The link below might not work.</p>" +
+      "<p><a href='" + Documentation.DOCUMENTATION_URL + "beacons/all/salt.beacons." + Utils.escapeHtml(beaconName) + ".html' target='_blank' rel='noopener'>Beacon Module '" + Utils.escapeHtml(beaconName) + "'" + Documentation.EXTERNAL_LINK + "</a></p>";
   }
 
   static _manualRunMenuBeaconNamePrepare () {
@@ -428,8 +462,8 @@ export class Documentation {
     return "List standard beacon names";
   }
 
-  static _manualRunMenuBeaconNameRun () {
-    const beaconsList = {
+  static get BEACONS_LIST () {
+    return {
       "adb": `
                 {
                   "states": [
@@ -808,53 +842,78 @@ export class Documentation {
                   "interval": 3600
                 }`
     };
+  }
 
+  static _manualRunMenuBeaconNameRun () {
+    const beaconsList = Documentation.BEACONS_LIST;
     const beaconsListAvailable = Utils.getStorageItemObject("session", "beacons_list_available");
 
     // show the beacon names
     let html = "<p>Choose a template for 'beacons.add'</p>";
     html += "<p>Using a template will completely replace the current command</p>";
 
-    let headerShown1 = false;
+    html += Documentation._buildBeaconsOnAllMinionsSection(beaconsList, beaconsListAvailable);
+    html += Documentation._buildBeaconsOnSomeMinionsSection(beaconsList, beaconsListAvailable);
+    html += Documentation._buildBeaconsWithNoTemplateSection(beaconsList, beaconsListAvailable);
+    html += Documentation._buildBeaconsWithNoAvailabilitySection(beaconsList, beaconsListAvailable);
+    html += Documentation._buildBeaconsStatusMessages(beaconsListAvailable);
+
+    const output = document.querySelector(".run-command pre");
+    output.innerHTML = html;
+
+    Documentation._activateBeaconLinks(output, beaconsList);
+  }
+
+  static _buildBeaconsOnAllMinionsSection (beaconsList, beaconsListAvailable) {
+    let html = "";
+    let headerShown = false;
     for (const beaconName in beaconsList) {
       if (beaconName.startsWith("_")) {
         continue;
       }
       if (beaconName in beaconsListAvailable && beaconsListAvailable[beaconName] === beaconsListAvailable["_cnt"]) {
-        if (!headerShown1) {
+        if (!headerShown) {
           html += "<p>&nbsp;</p>";
           html += "<p>beacons available on all minions:</p>";
-          headerShown1 = true;
+          headerShown = true;
         }
         html += "<p>&nbsp;&nbsp;<a id='beaconname'>" + beaconName + "</a></p>";
       }
     }
+    return html;
+  }
 
-    let headerShown2 = false;
+  static _buildBeaconsOnSomeMinionsSection (beaconsList, beaconsListAvailable) {
+    let html = "";
+    let headerShown = false;
     for (const beaconName in beaconsList) {
       if (beaconName === "_cnt") {
         continue;
       }
       if (beaconName in beaconsListAvailable && beaconsListAvailable[beaconName] !== beaconsListAvailable["_cnt"]) {
-        if (!headerShown2) {
+        if (!headerShown) {
           html += "<p>&nbsp;</p>";
           html += "<p>beacons available on some minions:</p>";
-          headerShown2 = true;
+          headerShown = true;
         }
         html += "<p>&nbsp;&nbsp;<a id='beaconname'>" + beaconName + "</a> (" + beaconsListAvailable[beaconName] + " of " + beaconsListAvailable["_cnt"] + ")</p>";
       }
     }
+    return html;
+  }
 
-    let headerShown3 = false;
+  static _buildBeaconsWithNoTemplateSection (beaconsList, beaconsListAvailable) {
+    let html = "";
+    let headerShown = false;
     for (const beaconName in beaconsListAvailable) {
       if (beaconName.startsWith("_")) {
         continue;
       }
       if (!(beaconName in beaconsList)) {
-        if (!headerShown3) {
+        if (!headerShown) {
           html += "<p>&nbsp;</p>";
           html += "<p>beacons available on one or more minions, but no template available:</p>";
-          headerShown3 = true;
+          headerShown = true;
         }
         html += "<p>&nbsp;&nbsp;" + beaconName;
         if (beaconsListAvailable[beaconName] !== beaconsListAvailable["_cnt"]) {
@@ -863,26 +922,34 @@ export class Documentation {
         html += "</p>";
       }
     }
+    return html;
+  }
 
-    let headerShown4 = false;
+  static _buildBeaconsWithNoAvailabilitySection (beaconsList, beaconsListAvailable) {
+    let html = "";
+    let headerShown = false;
     for (const beaconName in beaconsList) {
       if (beaconName === "_cnt") {
         continue;
       }
       if (!(beaconName in beaconsListAvailable)) {
-        if (!headerShown4) {
+        if (!headerShown) {
           html += "<p>&nbsp;</p>";
           if (beaconsListAvailable.length === 0) {
             html += "<p>all known standard beacons:</p>";
           } else {
             html += "<p>beacons not available on any minion:</p>";
           }
-          headerShown4 = true;
+          headerShown = true;
         }
         html += "<p>&nbsp;&nbsp;<a id='beaconname'>" + beaconName + "</a></p>";
       }
     }
+    return html;
+  }
 
+  static _buildBeaconsStatusMessages (beaconsListAvailable) {
+    let html = "";
     if (beaconsListAvailable.length === 0) {
       html += "<p>&nbsp;</p>";
       html += "<p>no information is available on the availability of the beacon types on the minions, that information is still being loaded in the background</p>";
@@ -890,10 +957,10 @@ export class Documentation {
       html += "<p>&nbsp;</p>";
       html += "<p>some minions are offline and therefore did not provide information about available beacon types</p>";
     }
+    return html;
+  }
 
-    const output = document.querySelector(".run-command pre");
-    output.innerHTML = html;
-
+  static _activateBeaconLinks (output, beaconsList) {
     // activate the links
     for (const atag of output.querySelectorAll("a")) {
       atag.addEventListener("click", (pClickEvent) => {

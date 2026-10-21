@@ -1,4 +1,4 @@
-/* global */
+/* global document window */
 
 import {Character} from "../Character.js";
 import {LoginPanel} from "../panels/Login.js";
@@ -57,6 +57,10 @@ export class OptionsPanel extends Panel {
         [["digits", "0", "1", "2", "3", "4", "5", "6"]]
       ],
       [
+        "skip-wheel-minions-connected", null, "false",
+        [["skip", "true", "false"]]
+      ],
+      [
         "datetime-representation", "saltgui", "utc",
         [["representation", "utc", "local", "utc-localtime:utc+localtime", "local-utctime:local+utctime"]]
       ],
@@ -104,6 +108,11 @@ export class OptionsPanel extends Panel {
         "tooltip-mode", "saltgui", "full",
         [["mode", "full", "simple", "none"]]
       ],
+      ["pages", "saltgui", "(all)"],
+      [
+        "show-all-menuitems", "saltgui", "false",
+        [["show-all-menuitems", "true", "false"]]
+      ],
 
       /* last because it might be very long */
       ["custom-command-help", "saltgui", "(none)"]
@@ -115,7 +124,7 @@ export class OptionsPanel extends Panel {
     tr.id = "option-" + pName;
     tr.dataset.defaultValue = pDefaultValue;
 
-    const labelTxt = (pCategory ? pCategory + "_" : "") + pName.replace(/-/g, "_");
+    const labelTxt = (pCategory ? pCategory + "_" : "") + pName.replaceAll("-", "_");
     const tdName = Utils.createTd("", labelTxt + ":", "option-" + pName + "-name");
     tdName.style.whiteSpace = "normal";
     tr.appendChild(tdName);
@@ -124,101 +133,92 @@ export class OptionsPanel extends Panel {
     if (pValues === null) {
       tdValue.id = "option-" + pName + "-value";
     } else {
-      const span = Utils.createSpan("", "", "option-" + pName + "-value");
-      tdValue.appendChild(span);
-
-      const br1 = Utils.createBr();
-      tdValue.appendChild(br1);
-
-      const br2 = Utils.createBr();
-      tdValue.appendChild(br2);
-
-      let addSep = false;
-      for (const row of pValues) {
-        if (addSep) {
-          const br3 = Utils.createBr();
-          tdValue.appendChild(br3);
-        }
-        addSep = true;
-        for (let i = 1; i < row.length; i++) {
-          let itemValue = row[i];
-          let itemLabel = row[i];
-          const colonPos = row[i].search(":");
-          if (colonPos > 0) {
-            itemValue = row[i].substring(0, colonPos);
-            itemLabel = row[i].substring(colonPos + 1);
-          }
-
-          const radio = Utils.createElem("input");
-          radio.id = "option-" + pName + "-value-" + row[0] + "-" + itemValue;
-          radio.type = "radio";
-          radio.name = "option-" + pName + "-value-" + row[0];
-          radio.value = itemValue;
-          if (pName === "state-verbose") {
-            radio.addEventListener("change", () => {
-              this._newStateVerbose();
-            });
-          } else if (pName === "state-compress-ids") {
-            radio.addEventListener("change", () => {
-              this._newStateCompressIds();
-            });
-          } else if (pName === "state-output") {
-            radio.addEventListener("change", () => {
-              this._newStateOutput();
-            });
-          } else if (pName === "state-output-pct") {
-            radio.addEventListener("change", () => {
-              this._newStateOutputPct();
-            });
-          } else if (pName === "output-formats") {
-            radio.addEventListener("change", () => {
-              this._newOutputFormats();
-            });
-          } else if (pName === "datetime-fraction-digits") {
-            radio.addEventListener("change", () => {
-              this._newDatetimeFractionDigits();
-            });
-          } else if (pName === "datetime-representation") {
-            radio.addEventListener("change", () => {
-              this._newDatetimeRepresentation();
-            });
-          } else if (pName === "tooltip-mode") {
-            radio.addEventListener("change", () => {
-              this._newToolTipMode();
-            });
-          } else if (pName === "full-return") {
-            radio.addEventListener("change", () => {
-              this._newFullReturn();
-            });
-          } else if (pName === "use-cache-for-grains") {
-            radio.addEventListener("change", () => {
-              this._newUseCacheForGrains();
-            });
-          } else if (pName === "use-cache-for-pillar") {
-            radio.addEventListener("change", () => {
-              this._newUseCacheForPillar();
-            });
-          }
-
-          if (pName === "state-output" && itemValue === "full_id") {
-            tdValue.append(Utils.createBr());
-          }
-
-          const label = Utils.createElem("label", "", itemLabel);
-          label.htmlFor = radio.id;
-
-          const span2 = Utils.createSpan();
-
-          span2.appendChild(radio);
-          span2.appendChild(label);
-          tdValue.append(span2);
-        }
-      }
+      this._addOptionsToTd(tdValue, pName, pValues);
     }
     tr.appendChild(tdValue);
 
     const tbody = this.table.tBodies[0];
     tbody.appendChild(tr);
+  }
+
+  _addOptionsToTd (tdValue, pName, pValues) {
+    const span = Utils.createSpan("", "", "option-" + pName + "-value");
+    tdValue.appendChild(span);
+
+    const br1 = Utils.createBr();
+    tdValue.appendChild(br1);
+
+    const br2 = Utils.createBr();
+    tdValue.appendChild(br2);
+
+    let addSep = false;
+    for (const row of pValues) {
+      if (addSep) {
+        const br3 = Utils.createBr();
+        tdValue.appendChild(br3);
+      }
+      addSep = true;
+      this._addRowOptions(tdValue, pName, row);
+    }
+  }
+
+  _addRowOptions (tdValue, pName, row) {
+    for (let i = 1; i < row.length; i++) {
+      const itemValue = OptionsPanel._extractValue(row[i]);
+      const itemLabel = OptionsPanel._extractLabel(row[i]);
+
+      const radio = Utils.createElem("input");
+      radio.id = "option-" + pName + "-value-" + row[0] + "-" + itemValue;
+      radio.type = "radio";
+      radio.name = "option-" + pName + "-value-" + row[0];
+      radio.value = itemValue;
+
+      this._attachChangeListener(radio, pName);
+
+      if (pName === "state-output" && itemValue === "full_id") {
+        tdValue.append(Utils.createBr());
+      }
+
+      const label = Utils.createElem("label", "", itemLabel);
+      label.htmlFor = radio.id;
+
+      const span2 = Utils.createSpan();
+      span2.appendChild(radio);
+      span2.appendChild(label);
+      tdValue.append(span2);
+    }
+  }
+
+  static _extractValue (item) {
+    const colonPos = item.search(":");
+    return colonPos > 0 ? item.substring(0, colonPos) : item;
+  }
+
+  static _extractLabel (item) {
+    const colonPos = item.search(":");
+    return colonPos > 0 ? item.substring(colonPos + 1) : item;
+  }
+
+  _attachChangeListener (radio, pName) {
+    const handlerMap = {
+      "datetime-fraction-digits": () => this._newDatetimeFractionDigits(),
+      "datetime-representation": () => this._newDatetimeRepresentation(),
+      "full-return": () => this._newFullReturn(),
+      "output-formats": () => this._newOutputFormats(),
+      "show-all-menuitems": () => this._newShowAllMenuItems(),
+      "skip-wheel-minions-connected": () => this._newSkipWheelMinionsConnected(),
+      "state-compress-ids": () => this._newStateCompressIds(),
+      "state-output": () => this._newStateOutput(),
+      "state-output-pct": () => this._newStateOutputPct(),
+      "state-verbose": () => this._newStateVerbose(),
+      "tooltip-mode": () => this._newToolTipMode(),
+      "use-cache-for-grains": () => this._newUseCacheForGrains(),
+      "use-cache-for-pillar": () => this._newUseCacheForPillar()
+    };
+
+    if (handlerMap[pName]) {
+      radio.addEventListener("change", handlerMap[pName]);
+    }
   }
 
   static _enhanceSessionStart (pTd, pSessionStart) {
@@ -297,79 +297,98 @@ export class OptionsPanel extends Panel {
       const defaultValue = option[2];
       const valuesArr = option[3];
 
-      let value;
-      if (category === "version") {
-        value = LoginPanel.version;
-      } else if (category === "session") {
-        value = loginResponse[name];
-      } else if (category === null) {
-        value = Utils.getStorageItem("session", name.replace(/-/g, "_"));
-      } else if (category === "saltgui") {
-        value = Utils.getStorageItem("session", name.replace(/-/g, "_"));
-      } else {
-        value = category + "[" + name + "]";
-      }
-
+      const value = OptionsPanel._getOptionValue(name, category, loginResponse);
       const td = this.div.querySelector("#option-" + name + "-value");
-      if (category === "session" && name === "start") {
-        OptionsPanel._enhanceSessionStart(td, value);
-      } else if (category === "session" && name === "expire") {
-        OptionsPanel._enhanceSessionExpire(td, value, sessionStart);
-      } else if (category === "session" && name === "perms") {
-        td.innerText = OutputYaml.formatYAML(value);
-      } else if (category === "session") {
-        td.innerText = value;
-      } else {
-        td.innerText = this._parseAndFormat(name, value);
-      }
 
-      if (category === "session" && name === "expire") {
-        this.updateExpiresInterval = window.setInterval(() => {
-          // just redo the whole text-block
-          OptionsPanel._enhanceSessionExpire(td, value, sessionStart);
-        }, 1000);
-      }
+      this._displayOptionValue(td, name, category, value, sessionStart);
+      this._setupOptionIntervals(td, name, category, value, sessionStart);
 
-      // some rows only display values, skip these
       if (!valuesArr) {
         continue;
       }
 
-      // first select the "none" values
-      for (const valueArr of valuesArr) {
-        const id = "option-" + name + "-value-" + valueArr[0] + "-none";
-        const noneElement = document.getElementById(id);
-        if (noneElement) {
-          noneElement.checked = true;
+      OptionsPanel._selectOptionValues(name, valuesArr, defaultValue, value);
+    }
+  }
+
+  static _getOptionValue (name, category, loginResponse) {
+    if (category === "version") {
+      return LoginPanel.version;
+    } else if (category === "session") {
+      return loginResponse[name];
+    } else if (category === null || category === "saltgui") {
+      return Utils.getStorageItem("session", name.replaceAll("-", "_"));
+    }
+    return category + "[" + name + "]";
+  }
+
+  _displayOptionValue (td, name, category, value, sessionStart) {
+    if (category === "session" && name === "start") {
+      OptionsPanel._enhanceSessionStart(td, value);
+    } else if (category === "session" && name === "expire") {
+      OptionsPanel._enhanceSessionExpire(td, value, sessionStart);
+    } else if (category === "session" && name === "perms") {
+      td.innerText = OutputYaml.formatYAML(value);
+    } else if (category === "session") {
+      td.innerText = value;
+    } else {
+      td.innerText = this._parseAndFormat(name, value);
+    }
+  }
+
+  _setupOptionIntervals (td, name, category, value, sessionStart) {
+    if (category === "session" && name === "start") {
+      this.updateExpiresInterval = window.setInterval(() => {
+        OptionsPanel._enhanceSessionStart(td, value, sessionStart);
+      }, 1000);
+    } else if (category === "session" && name === "expire") {
+      this.updateExpiresInterval = window.setInterval(() => {
+        OptionsPanel._enhanceSessionExpire(td, value, sessionStart);
+      }, 1000);
+    }
+  }
+
+  static _selectOptionValues (name, valuesArr, defaultValue, value) {
+    OptionsPanel._selectNoneValues(name, valuesArr);
+
+    let finalValue = value;
+    if (!finalValue) {
+      finalValue = defaultValue;
+    }
+
+    const varr = finalValue.replaceAll("\"", "").split(","); // NOSONAR S7776
+    OptionsPanel._selectMatchingValues(name, valuesArr, varr);
+  }
+
+  static _selectNoneValues (name, valuesArr) {
+    for (const valueArr of valuesArr) {
+      const id = "option-" + name + "-value-" + valueArr[0] + "-none";
+      const noneElement = document.getElementById(id);
+      if (noneElement) {
+        noneElement.checked = true;
+      }
+    }
+  }
+
+  static _selectMatchingValues (name, valuesArr, selectedValues) {
+    for (const valueArr of valuesArr) {
+      for (let i = 1; i < valueArr.length; i++) {
+        let label = valueArr[i];
+        if (label.includes(":")) {
+          label = label.replace(/:.*/, "");
         }
-      }
-
-      // select the default value when there is no selection
-      if (!value) {
-        value = defaultValue;
-      }
-
-      const varr = value.replace(/"/g, "").split(",");
-
-      // then select the other values
-      for (const valueArr of valuesArr) {
-        for (let i = 1; i < valueArr.length; i++) {
-          let label = valueArr[i];
-          if (label.indexOf(":") >= 0) {
-            label = label.replace(/:.*/, "");
-          }
-          const id = "option-" + name + "-value-" + valueArr[0] + "-" + label;
-          const thisElement = document.getElementById(id);
-          // Arrays.includes() is only available from ES7/2016
-          if (value && varr.indexOf(label) >= 0) {
-            thisElement.checked = true;
-          }
+        const id = "option-" + name + "-value-" + valueArr[0] + "-" + label;
+        const thisElement = document.getElementById(id);
+        if (selectedValues.includes(label)) {
+          thisElement.checked = true;
         }
       }
     }
   }
 
   onHide () {
+    super.onHide();
+
     if (this.updateExpiresInterval) {
       // stop the timer when nobody is looking
       window.clearInterval(this.updateExpiresInterval);
@@ -519,6 +538,18 @@ export class OptionsPanel extends Panel {
     Utils.setStorageItem("session", "datetime_fraction_digits", value);
   }
 
+  _newSkipWheelMinionsConnected () {
+    let value = "";
+    /* eslint-disable curly */
+    if (this._isSelected("skip-wheel-minions-connected", "skip", "false")) value = "false";
+    if (this._isSelected("skip-wheel-minions-connected", "skip", "true")) value = "true";
+    value = value.replace(/^,/, "");
+    /* eslint-enable curly */
+    const skipWheelMinionsConnectedTd = this.div.querySelector("#option-skip-wheel-minions-connected-value");
+    skipWheelMinionsConnectedTd.innerText = value || "(none)";
+    Utils.setStorageItem("session", "skip_wheel_minions_connected", value);
+  }
+
   _newDatetimeRepresentation () {
     let value = "";
     /* eslint-disable curly */
@@ -553,5 +584,17 @@ export class OptionsPanel extends Panel {
     const fullReturnTd = this.div.querySelector("#option-full-return-value");
     fullReturnTd.innerText = value;
     Utils.setStorageItem("session", "full_return", value);
+  }
+
+  _newShowAllMenuItems () {
+    let value = "";
+    /* eslint-disable curly */
+    if (this._isSelected("show-all-menuitems", "show-all-menuitems", "false")) value = "false";
+    if (this._isSelected("show-all-menuitems", "show-all-menuitems", "true")) value = "true";
+    /* eslint-enable curly */
+    const showAllMenuItemsTd = this.div.querySelector("#option-show-all-menuitems-value");
+    showAllMenuItemsTd.innerText = value;
+    Utils.setStorageItem("session", "show_all_menuitems", value);
+    Router.updateMainMenu();
   }
 }

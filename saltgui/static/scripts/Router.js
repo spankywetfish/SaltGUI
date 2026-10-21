@@ -1,4 +1,4 @@
-/* global config */
+/* global config document URLSearchParams window */
 
 import {API} from "./Api.js";
 import {BeaconsMinionPage} from "./pages/BeaconsMinion.js";
@@ -15,6 +15,8 @@ import {JobsPage} from "./pages/Jobs.js";
 import {KeysPage} from "./pages/Keys.js";
 import {LoginPage} from "./pages/Login.js";
 import {LogoutPage} from "./pages/Logout.js";
+import {MineMinionPage} from "./pages/MineMinion.js";
+import {MinePage} from "./pages/Mine.js";
 import {MinionsPage} from "./pages/Minions.js";
 import {NodegroupsPage} from "./pages/Nodegroups.js";
 import {OptionsPage} from "./pages/Options.js";
@@ -22,6 +24,7 @@ import {OrchestrationsPage} from "./pages/Orchestrations.js";
 import {Output} from "./output/Output.js";
 import {PillarsMinionPage} from "./pages/PillarsMinion.js";
 import {PillarsPage} from "./pages/Pillars.js";
+import {QuickviewPage} from "./pages/Quickview.js";
 import {ReactorsPage} from "./pages/Reactors.js";
 import {SchedulesMinionPage} from "./pages/SchedulesMinion.js";
 import {SchedulesPage} from "./pages/Schedules.js";
@@ -39,29 +42,33 @@ export class Router {
     this.commandbox = new CommandBox(this, this.api);
     this.pages = [];
     Router.currentPage = undefined;
+    Router.keyBindings = {};
 
     this._registerPage(new LoginPage(this));
-    this._registerPage(Router.minionsPage = new MinionsPage(this));
-    this._registerPage(Router.keysPage = new KeysPage(this));
-    this._registerPage(Router.grainsPage = new GrainsPage(this));
-    this._registerPage(Router.grainsMinionPage = new GrainsMinionPage(this));
-    this._registerPage(Router.schedulesPage = new SchedulesPage(this));
-    this._registerPage(Router.schedulesMinionPage = new SchedulesMinionPage(this));
-    this._registerPage(Router.pillarsPage = new PillarsPage(this));
-    this._registerPage(Router.pillarsMinionPage = new PillarsMinionPage(this));
-    this._registerPage(Router.beaconsPage = new BeaconsPage(this));
-    this._registerPage(Router.beaconsMinionPage = new BeaconsMinionPage(this));
-    this._registerPage(Router.nodegroupsPage = new NodegroupsPage(this));
-    this._registerPage(Router.jobPage = new JobPage(this));
-    this._registerPage(Router.jobsPage = new JobsPage(this));
-    this._registerPage(Router.highStatePage = new HighStatePage(this));
-    this._registerPage(Router.templatesPage = new TemplatesPage(this));
-    this._registerPage(Router.eventsPage = new EventsPage(this));
-    this._registerPage(Router.reactorsPage = new ReactorsPage(this));
-    this._registerPage(Router.orchestrationsPage = new OrchestrationsPage(this));
-    this._registerPage(Router.optionsPage = new OptionsPage(this));
-    this._registerPage(Router.issuesPage = new IssuesPage(this));
-    this._registerPage(Router.logoutPage = new LogoutPage(this));
+    this._registerPage(Router.minionsPage = new MinionsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.keysPage = new KeysPage(this)); // NOSONAR S1121
+    this._registerPage(Router.grainsPage = new GrainsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.grainsMinionPage = new GrainsMinionPage(this)); // NOSONAR S1121
+    this._registerPage(Router.pillarsPage = new PillarsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.pillarsMinionPage = new PillarsMinionPage(this)); // NOSONAR S1121
+    this._registerPage(Router.minePage = new MinePage(this)); // NOSONAR S1121
+    this._registerPage(Router.mineMinionPage = new MineMinionPage(this)); // NOSONAR S1121
+    this._registerPage(Router.beaconsPage = new BeaconsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.beaconsMinionPage = new BeaconsMinionPage(this)); // NOSONAR S1121
+    this._registerPage(Router.schedulesPage = new SchedulesPage(this)); // NOSONAR S1121
+    this._registerPage(Router.schedulesMinionPage = new SchedulesMinionPage(this)); // NOSONAR S1121
+    this._registerPage(Router.nodegroupsPage = new NodegroupsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.jobPage = new JobPage(this)); // NOSONAR S1121
+    this._registerPage(Router.jobsPage = new JobsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.highStatePage = new HighStatePage(this)); // NOSONAR S1121
+    this._registerPage(Router.templatesPage = new TemplatesPage(this)); // NOSONAR S1121
+    this._registerPage(Router.eventsPage = new EventsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.reactorsPage = new ReactorsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.orchestrationsPage = new OrchestrationsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.optionsPage = new OptionsPage(this)); // NOSONAR S1121
+    this._registerPage(Router.issuesPage = new IssuesPage(this)); // NOSONAR S1121
+    this._registerPage(Router.quickviewPage = new QuickviewPage(this)); // NOSONAR S1121
+    this._registerPage(Router.logoutPage = new LogoutPage(this)); // NOSONAR S1121
 
     this._registerRouterEventListeners();
 
@@ -87,7 +94,7 @@ export class Router {
     // shortcut
 
     if (pKey) {
-      Utils.setStorageItem("session", "menu_" + pKey, pUrl);
+      Router.keyBindings[pKey] = pUrl;
     }
 
     // full menu
@@ -108,17 +115,12 @@ export class Router {
         dropDownDiv.append(dropdownContent);
       }
       const itemDiv = Utils.createDiv("run-command-button menu-item", pButtonId, "button-" + pButtonId + "1");
-      if (pKey) {
-        // currently applies to all, but just in case
-        itemDiv.classList.add("menu-item-first-letter");
-      }
+      Router._applyMenuKeyStyle(itemDiv, pButtonId, pKey);
       dropdownContent.append(itemDiv);
     } else {
       const topItemDiv = Utils.createDiv("menu-item", pButtonId, "button-" + pButtonId + "1");
       dropDownDiv.append(topItemDiv);
-      if (pKey) {
-        topItemDiv.classList.add("menu-item-first-letter");
-      }
+      Router._applyMenuKeyStyle(topItemDiv, pButtonId, pKey);
     }
 
     // mini menu
@@ -129,9 +131,7 @@ export class Router {
     if (pParentId) {
       menuItemDiv.style.paddingLeft = "50px";
     }
-    if (pKey) {
-      menuItemDiv.classList.add("menu-item-first-letter");
-    }
+    Router._applyMenuKeyStyle(menuItemDiv, pButtonId, pKey);
     dropdownContent2.append(menuItemDiv);
 
     // activate the menu items as needed
@@ -141,9 +141,8 @@ export class Router {
     for (const nr of ["1", "2"]) {
       document.getElementById("button-" + pButtonId + nr).
         addEventListener("click", (pClickEvent) => {
-          const pages = Router._getPagesList();
-          // Arrays.includes() is only available from ES7/2016
-          if (pUrl && (pButtonId === "logout" || pages.length === 0 || pages.indexOf(pButtonId) >= 0)) {
+          const pages = Router.getPagesList();
+          if (pUrl && (pButtonId === "logout" || pages.length === 0 || pages.includes(pButtonId))) {
             this.goTo(pUrl);
           }
           // hide the menu, it will stay hidden when the mouse is not over it
@@ -153,7 +152,7 @@ export class Router {
             dropDownPanel = pClickEvent.target.parentElement;
           } else {
             // may be null when there is no dropdown part
-            dropDownPanel = pClickEvent.target.nextSibling;
+            dropDownPanel = pClickEvent.target.nextElementSibling;
           }
           if (dropDownPanel) {
             dropDownPanel.style.display = "none";
@@ -164,6 +163,23 @@ export class Router {
           // prevent further actions
           pClickEvent.stopPropagation();
         });
+    }
+  }
+
+  static _applyMenuKeyStyle (pElement, pButtonId, pKey) {
+    if (!pKey) {
+      return;
+    }
+    if (pButtonId[0] === pKey) {
+      pElement.classList.add("menu-item-first-letter");
+      pElement.dataset.hasFirstLetterShortcut = true;
+    } else {
+      const shortcutContainer = Utils.createSpan("menu-item-shortcut-container");
+      shortcutContainer.append(document.createTextNode(" ("));
+      const keySpan = Utils.createSpan("menu-item-shortcut-key", pKey);
+      shortcutContainer.append(keySpan);
+      shortcutContainer.append(document.createTextNode(")"));
+      pElement.append(shortcutContainer);
     }
   }
 
@@ -191,7 +207,7 @@ export class Router {
         pClickEvent.stopPropagation();
       });
 
-    addEventListener("popstate", (popstate) => {
+    window.addEventListener("popstate", (popstate) => {
       const hash = popstate.target.location.hash.replace(/^#/, "");
       const search = popstate.target.location.search;
       /* eslint-disable compat/compat */
@@ -203,9 +219,10 @@ export class Router {
 
     this._registerMenuItem(null, "minions", "minions", "m");
     this._registerMenuItem("minions", "grains", "grains", "g");
-    this._registerMenuItem("minions", "schedules", "schedules", "s");
     this._registerMenuItem("minions", "pillars", "pillars", "p");
+    this._registerMenuItem("minions", "mine", "mine", "M");
     this._registerMenuItem("minions", "beacons", "beacons", "b");
+    this._registerMenuItem("minions", "schedules", "schedules", "s");
     this._registerMenuItem("minions", "nodegroups", "nodegroups", "n");
     this._registerMenuItem(null, "keys", "keys", "k");
     this._registerMenuItem(null, "jobs", "jobs", "j");
@@ -217,40 +234,58 @@ export class Router {
     this._registerMenuItem(null, "issues", "issues", "i");
     // no shortcut for logout
     this._registerMenuItem(null, "logout", "logout");
+
+    // not a menu item, hidden page
+    Router.keyBindings["O"] = "options";
+    Router.keyBindings["Q"] = "quickview";
+
+    // not a menu item, not a page, but reserve key
+    // Router.keyBindings["c"] = "commandbox";
   }
 
   _registerPage (pPage) {
     this.pages.push(pPage);
-    if (pPage.onRegister) {
-      pPage.onRegister();
-    }
+    pPage.onRegister();
   }
 
-  static _getPagesList () {
-    const pages = Utils.getStorageItemObject("session", "pages");
-    const userName = Utils.getStorageItemObject("session", "login_response").user;
-    if (!userName || typeof pages !== "object" || !(userName in pages)) {
+  static getPagesList () {
+    const pages = Utils.getStorageItem("session", "pages");
+    if (!pages) {
       return [];
     }
-    const ret = pages[userName];
-    if (!ret || ret[0] === "*") {
+    try {
+      const result = JSON.parse(pages);
+      return Array.isArray(result) ? result : [];
+    } catch (err) {
+      Utils.log("Failed to parse session variable 'pages': " + err);
       return [];
     }
-    return ret;
   }
 
   static _showMenuItem (pPages, pPage, pChildren = []) {
+    const visible = Router._shouldItemBeVisible(pPages, pPage);
+    // still show a menu item when a child is visible
+    const hasVisibleChild = Router._hasVisibleChild(pPages, pChildren);
+
+    // perform the hiding/showing
+    for (let nr = 1; nr <= 2; nr++) {
+      const item = document.getElementById("button-" + pPage.path + nr);
+      Router._updateMenuItemClass(item, visible, hasVisibleChild);
+    }
+  }
+
+  static _shouldItemBeVisible (pPages, pPage) {
     // assume the best
     let visible = true;
 
     // do not show unwanted menu items
-    // Arrays.includes() is only available from ES7/2016
-    if (pPages.length && pPages.indexOf(pPage.path) < 0) {
+    if (pPages.length && !pPages.includes(pPage.path)) {
       visible = false;
     }
 
-    // do not show pages that have no actual content
-    if (!pPage.isVisible()) {
+    // do not show pages that have no actual content (unless forced)
+    const showAllMenuItems = Utils.getStorageItemBoolean("session", "show_all_menuitems");
+    if (!showAllMenuItems && !pPage.isVisible()) {
       visible = false;
     }
 
@@ -259,25 +294,37 @@ export class Router {
       visible = true;
     }
 
-    // still show a menu item when a child is visible
-    let hasVisibleChild = false;
+    return visible;
+  }
+
+  static _hasVisibleChild (pPages, pChildren) {
     for (const page of pChildren) {
-      // Arrays.includes() is only available from ES7/2016
-      if (pPages.indexOf(page) >= 0) {
-        hasVisibleChild = true;
-        break;
+      if (pPages.includes(page)) {
+        return true;
       }
     }
+    return false;
+  }
 
-    // perform the hiding/showing
-    for (let nr = 1; nr <= 2; nr++) {
-      const item = document.getElementById("button-" + pPage.path + nr);
-      item.style.color = !visible && hasVisibleChild ? "lightgray" : "black";
-      if (visible || hasVisibleChild) {
-        item.classList.remove("menu-item-hidden");
-      } else {
-        item.classList.add("menu-item-hidden");
-      }
+  static _updateMenuItemClass (pItem, pVisible, pHasVisibleChild) {
+    if (!pVisible && pHasVisibleChild) {
+      pItem.classList.add("menu-item-dimmed");
+    } else {
+      pItem.classList.remove("menu-item-dimmed");
+    }
+    if (pVisible && pItem.dataset.hasFirstLetterShortcut) {
+      // show the shortcut indicator only when item is enabled
+      pItem.classList.add("menu-item-first-letter");
+    } else {
+      // hide the shortcut indicator when item is disabled or hidden
+      pItem.classList.remove("menu-item-first-letter");
+    }
+    if (pVisible || pHasVisibleChild) {
+      // show the menu item
+      pItem.classList.remove("menu-item-hidden");
+    } else {
+      // hide the menu item
+      pItem.classList.add("menu-item-hidden");
     }
   }
 
@@ -294,13 +341,14 @@ export class Router {
   }
 
   static updateMainMenu () {
-    const pages = Router._getPagesList();
+    const pages = Router.getPagesList();
 
-    Router._showMenuItem(pages, Router.minionsPage, ["grains", "schedules", "pillars", "beacons", "nodegroups"]);
+    Router._showMenuItem(pages, Router.minionsPage, ["grains", "pillars", "mine", "beacons", "schedules", "nodegroups"]);
     Router._showMenuItem(pages, Router.grainsPage);
-    Router._showMenuItem(pages, Router.schedulesPage);
     Router._showMenuItem(pages, Router.pillarsPage);
+    Router._showMenuItem(pages, Router.minePage);
     Router._showMenuItem(pages, Router.beaconsPage);
+    Router._showMenuItem(pages, Router.schedulesPage);
     Router._showMenuItem(pages, Router.nodegroupsPage);
     Router._showMenuItem(pages, Router.keysPage);
     Router._showMenuItem(pages, Router.jobsPage, ["highstate", "orchestrations", "templates"]);
@@ -321,26 +369,8 @@ export class Router {
     // close the command-box when it is stil open
     CommandBox.hideManualRun();
 
-    if (pHash !== "login" && Utils.getStorageItem("session", "login_response") === null) {
-      // the fact that we don't have a session will be caught later
-      // but this was shows less error messages on the console
-      // but do not destroy the reason when login is already the goal
-
-      // keep the old query parameters, and save the new location
-      pQuery["reason"] = "no-session";
-      pQuery["page"] = pHash;
-      pHash = "login";
-    }
-
-    const pages = Router._getPagesList();
-    if (!pHash) {
-      // go to the concrete default page
-      if (pages.length) {
-        pHash = pages[0];
-      } else {
-        pHash = "minions";
-      }
-    }
+    pHash = Router._resolveLoginRedirect(pHash, pQuery);
+    pHash = Router._resolveDefaultHash(pHash);
 
     // save the details from the parent
     const parentHash = document.location.hash.replace(/^#/, "");
@@ -362,45 +392,9 @@ export class Router {
       }
       // push history state, so that the address bar holds the correct
       // deep-link; and so that we can use the back-button
-      let url = config.NAV_URL ? config.NAV_URL : "/";
-      let sep = "?";
-      for (const key in pQuery) {
-        const value = pQuery[key];
-        if (!value || value === "undefined") {
-          continue;
-        }
-        url += sep + key + "=" + encodeURIComponent(value);
-        sep = "&";
-      }
-      if (inNewWindow) {
-        url += sep + "popup=true";
-        sep = "&";
-      }
-      url += "#" + pHash;
-      if (parentHash === route.path) {
-        // page refresh
-        // prevents being detected as "forward navigation"
-        // stay on the page, but parameters may have been updated
-        window.history.replaceState({}, undefined, url);
-      } else if (pForward === 0) {
-        // forward navigation
-        if (inNewWindow) {
-          // in a new window
-          Router._cancelSelections();
-          window.open(url);
-          return;
-        }
-        window.history.pushState({}, undefined, url);
-        route.parentHash = parentHash;
-        route.parentQuery = parentQuery;
-      } else if (pForward === 1) {
-        // close-icon on a panel
-        // do not save parent details
-        // these were already registered on the way forward
-        window.history.pushState({}, undefined, url);
-      } else if (pForward === 2) {
-        // backward navigation from browser
-        // do nothing extra
+      const url = Router._buildNavigationUrl(pHash, pQuery, inNewWindow);
+      if (Router._handleNavigationState(route, url, pForward, inNewWindow, parentHash, parentQuery)) {
+        return;
       }
       Router._showPage(route);
       return;
@@ -413,6 +407,81 @@ export class Router {
       return;
     }
     this.goTo("");
+  }
+
+  static _resolveLoginRedirect (pHash, pQuery) {
+    if (pHash !== "login" && Utils.getStorageItem("session", "login_response") === null) {
+      // the fact that we don't have a session will be caught later
+      // but this was shows less error messages on the console
+      // but do not destroy the reason when login is already the goal
+
+      // keep the old query parameters, and save the new location
+      pQuery["reason"] = "no-session";
+      pQuery["page"] = pHash;
+      return "login";
+    }
+    return pHash;
+  }
+
+  static _resolveDefaultHash (pHash) {
+    if (pHash) {
+      return pHash;
+    }
+    // go to the concrete default page
+    const pages = Router.getPagesList();
+    return pages.length ? pages[0] : "minions";
+  }
+
+  static _buildNavigationUrl (pHash, pQuery, pInNewWindow) {
+    let url = config.NAV_URL ? config.NAV_URL : "/";
+    let sep = "?";
+    for (const key in pQuery) {
+      const value = pQuery[key];
+      if (!value || value === "undefined") {
+        continue;
+      }
+      url += sep + key + "=" + encodeURIComponent(value);
+      sep = "&";
+    }
+    if (pInNewWindow) {
+      url += sep + "popup=true";
+    }
+    url += "#" + pHash;
+    return url;
+  }
+
+  static _handleNavigationState (pRoute, pUrl, pForward, pInNewWindow, pParentHash, pParentQuery) {
+    if (pParentHash === pRoute.path) {
+      // page refresh
+      // prevents being detected as "forward navigation"
+      // stay on the page, but parameters may have been updated
+      window.history.replaceState({}, undefined, pUrl);
+    } else if (pForward === 0) {
+      return Router._handleForwardNavigation(pRoute, pUrl, pInNewWindow, pParentHash, pParentQuery);
+    } else if (pForward === 1) {
+      // close-icon on a panel
+      // do not save parent details
+      // these were already registered on the way forward
+      window.history.pushState({}, undefined, pUrl);
+    } else if (pForward === 2) {
+      // backward navigation from browser
+      // do nothing extra
+    }
+    return false;
+  }
+
+  static _handleForwardNavigation (pRoute, pUrl, pInNewWindow, pParentHash, pParentQuery) {
+    // forward navigation
+    if (pInNewWindow) {
+      // in a new window
+      Router._cancelSelections();
+      window.open(pUrl);
+      return true;
+    }
+    window.history.pushState({}, undefined, pUrl);
+    pRoute.parentHash = pParentHash;
+    pRoute.parentQuery = pParentQuery;
+    return false;
   }
 
   static _showPage (pPage) {
@@ -465,8 +534,6 @@ export class Router {
       // Hide element after fade, so it does not expand the body
       page.style.display = "none";
     }, 500);
-    if (pPage.onHide) {
-      pPage.onHide();
-    }
+    pPage.onHide();
   }
 }

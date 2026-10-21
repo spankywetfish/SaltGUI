@@ -1,10 +1,12 @@
+/* global navigator */
+
 import {Output} from "./Output.js";
 import {Utils} from "../Utils.js";
 
 export class OutputHighstateSummaryOriginal {
 
-  static addPercentage (pCount, pTotal) {
-    return (100 * pCount / pTotal).toLocaleString(undefined, {"maximumFractionDigits": 1, "minimumFractionDigits": 1}) + "%";
+  static addPercentage (pCount, pTotal, pLocale = navigator.language) {
+    return (pCount / pTotal).toLocaleString(pLocale, {"maximumFractionDigits": 1, "minimumFractionDigits": 1, "style": "percent"});
   }
 
   static addSummarySpan (pDiv, pMinionId, pSucceeded, pFailed, pSkipped, pTotalMilliSeconds, pChangesSummary) {

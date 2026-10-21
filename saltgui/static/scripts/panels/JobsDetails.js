@@ -1,4 +1,4 @@
-/* global */
+/* global document window */
 
 import {Character} from "../Character.js";
 import {DropDownMenu} from "../DropDown.js";
@@ -45,7 +45,7 @@ export class JobsDetailsPanel extends JobsPanel {
   }
 
   onShow () {
-    const patInteger = /^(?:(?:0)|(?:[-+]?[1-9][0-9]*))$/;
+    const patInteger = /^(?:(?:0)|(?:[-+]?[1-9][0-9]*))$/; // NOSONAR S6353
 
     let cnt = decodeURIComponent(Utils.getQueryParam("cnt", String(MAX_JOBS_DETAILS)));
     if (cnt === "eligible") {
@@ -53,8 +53,8 @@ export class JobsDetailsPanel extends JobsPanel {
     } else if (cnt === "all") {
       // magic value to ignore all filters
       cnt = 99999;
-    } else if (cnt.match(patInteger)) {
-      cnt = parseInt(cnt, 10);
+    } else if (patInteger.test(cnt)) {
+      cnt = Number.parseInt(cnt, 10);
     } else {
       // pretend parameter was not present
       cnt = MAX_JOBS_DETAILS;
@@ -65,6 +65,8 @@ export class JobsDetailsPanel extends JobsPanel {
   }
 
   onHide () {
+    super.onHide();
+
     if (this.updateNextJobInterval) {
       // stop the timer when nobody is looking
       window.clearInterval(this.updateNextJobInterval);
@@ -144,7 +146,6 @@ export class JobsDetailsPanel extends JobsPanel {
   }
 
   _updateNextJob () {
-
     // user can decide
     // system can decide to remove the play/pause button
     if (this.playOrPause !== "play") {
@@ -155,61 +156,100 @@ export class JobsDetailsPanel extends JobsPanel {
     // find an item still marked as "(click)"
     // but when we find MAX_CNT_LOADING "loading..." items, the system is
     // probably overloaded and we skip a cycle
-    let cntLoading = 0;
-    let workLeft = false;
-    for (const tr of tbody.rows) {
-      const detailsField = tr.querySelector("td.details span");
-      if (!detailsField) {
-        continue;
-      }
-      if (tr.dataset.isLoading === "true") {
-        cntLoading += 1;
-        if (cntLoading >= MAX_CNT_LOADING) {
-          // too many already running
-          return;
-        }
-        continue;
-      }
-      if (tr.dataset.detailsUnknown === undefined) {
-        continue;
-      }
-      if (!JobsDetailsPanel._isInsideViewPort(tr)) {
-        workLeft = true;
-        continue;
-      }
-      detailsField.classList.add("no-job-details");
-      detailsField.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
-      tr.dataset.isLoading = "true";
-      const jobId = tr.dataset.jobid;
+    const result = this._findAndProcessNextJob(tbody);
 
-      if (this.nrErrors >= 3) {
-        // don't bother getting more data
-        // may show more then 3 errors when some are still in-flight
-        this._handleJobsRunnerJobsListJob(jobId, "skipped");
-        continue;
-      }
-
-      this._getJobDetails(jobId);
-      // only update one item at a time
-      return;
-    }
-
-    if (!workLeft) {
+    if (!result.workLeft) {
       this.setPlayPauseButton("none");
       this.updateFooter();
       window.clearInterval(this.updateNextJobInterval);
     }
   }
 
+  _findAndProcessNextJob (pTbody) {
+    let cntLoading = 0;
+    let workLeft = false;
+
+    for (const tr of pTbody.rows) {
+      const detailsField = tr.querySelector("td.details span");
+      if (!detailsField) {
+        continue;
+      }
+
+      const skipResult = JobsDetailsPanel._checkIfShouldSkip(tr, cntLoading);
+      if (skipResult.shouldReturn) {
+        return {workLeft: false};
+      }
+      if (skipResult.shouldContinue) {
+        if (skipResult.isLoading) {
+          cntLoading += 1;
+        } else if (skipResult.isOutOfViewPort) {
+          workLeft = true;
+        }
+        continue;
+      }
+
+      this._processJobRow(tr, detailsField);
+      // only update one item at a time
+      return {workLeft: true};
+    }
+
+    return {workLeft};
+  }
+
+  static _checkIfShouldSkip (pTr, pCntLoading) {
+    if (pTr.dataset.isLoading === "true") {
+      const isOverloaded = pCntLoading >= MAX_CNT_LOADING;
+      return {
+        isLoading: true,
+        isOutOfViewPort: false,
+        shouldContinue: true,
+        shouldReturn: isOverloaded
+      };
+    }
+
+    if (pTr.dataset.detailsUnknown === undefined) {
+      return {
+        isLoading: false,
+        isOutOfViewPort: false,
+        shouldContinue: true,
+        shouldReturn: false
+      };
+    }
+
+    const isOutOfViewPort = !JobsDetailsPanel._isInsideViewPort(pTr);
+    return {
+      isLoading: false,
+      isOutOfViewPort,
+      shouldContinue: isOutOfViewPort,
+      shouldReturn: false
+    };
+  }
+
+  _processJobRow (pTr, pDetailsField) {
+    pDetailsField.classList.add("no-job-details");
+    pDetailsField.innerText = "loading" + Character.HORIZONTAL_ELLIPSIS;
+    pTr.dataset.isLoading = "true";
+    const jobId = pTr.dataset.jobid;
+
+    if (this.nrErrors >= 3) {
+      // don't bother getting more data
+      // may show more then 3 errors when some are still in-flight
+      this._handleJobsRunnerJobsListJob(jobId, "skipped");
+      return;
+    }
+
+    this._getJobDetails(jobId);
+  }
+
   _getJobDetails (pJobId) {
     const runnerJobsListJobPromise = this.api.getRunnerJobsListJob(pJobId);
 
-    runnerJobsListJobPromise.then((pRunnerJobsListJobData) => {
-      this._handleJobsRunnerJobsListJob(pJobId, pRunnerJobsListJobData);
+    runnerJobsListJobPromise.then((ok_RunnerJobsListJob) => {
+      this._handleJobsRunnerJobsListJob(pJobId, ok_RunnerJobsListJob);
       return true;
-    }, (pRunnerJobsListJobMsg) => {
+    }, (_error_RunnerJobsListJob) => {
       this.nrErrors += 1;
-      this._handleJobsRunnerJobsListJob(pJobId, JSON.stringify(pRunnerJobsListJobMsg));
+      this._handleJobsRunnerJobsListJob(pJobId, JSON.stringify(_error_RunnerJobsListJob));
       return false;
     });
   }
@@ -229,15 +269,7 @@ export class JobsDetailsPanel extends JobsPanel {
       return;
     }
 
-    if (typeof pData !== "object") {
-      if (pData === "skipped") {
-        detailsSpan.innerText = "(skipped)";
-        Utils.addToolTip(detailsSpan, "skipped due to too many previous errors");
-      } else {
-        detailsSpan.innerText = "(error)";
-        Utils.addToolTip(detailsSpan, pData);
-      }
-      detailsSpan.classList.remove("no-job-details");
+    if (!JobsDetailsPanel._handleJobsDataValidation(pData, detailsSpan)) {
       return;
     }
 
@@ -258,10 +290,35 @@ export class JobsDetailsPanel extends JobsPanel {
       pData.Minions = [];
     }
 
+    let detailsHTML = JobsDetailsPanel._buildDetailsHtmlHeader(pData);
+    const summary = JobsDetailsPanel._buildResultSummary(pData);
+    detailsHTML += JobsDetailsPanel._buildDetailsHtmlSummary(summary);
+
+    const keyCount = Object.keys(pData.Result).length;
+    const refreshVisible = JobsDetailsPanel._shouldShowRefreshButton(pData, keyCount, jobTr);
+    JobsDetailsPanel._populateDetailsSpan(detailsSpan, pJobId, detailsHTML, refreshVisible);
+  }
+
+  static _handleJobsDataValidation (pData, detailsSpan) {
+    if (typeof pData !== "object") {
+      if (pData === "skipped") {
+        detailsSpan.innerText = "(skipped)";
+        Utils.addToolTip(detailsSpan, "skipped due to too many previous errors");
+      } else {
+        detailsSpan.innerText = "(error)";
+        Utils.addToolTip(detailsSpan, pData);
+      }
+      detailsSpan.classList.remove("no-job-details");
+      return false;
+    }
+    return true;
+  }
+
+  static _buildDetailsHtmlHeader (pData) {
+    const keyCount = Object.keys(pData.Result).length;
     let detailsHTML = Utils.txtZeroOneMany(pData.Minions.length,
       "no minions", "{0} minion", "{0} minions");
 
-    const keyCount = Object.keys(pData.Result).length;
     detailsHTML += ", ";
     if (pData.Minions.length === 0) {
       detailsHTML += "<span>";
@@ -280,6 +337,10 @@ export class JobsDetailsPanel extends JobsPanel {
       detailsHTML += " missing</span>";
     }
 
+    return detailsHTML;
+  }
+
+  static _buildResultSummary (pData) {
     const summary = {};
     for (const minionId in pData.Result) {
       const result = pData.Result[minionId];
@@ -294,43 +355,58 @@ export class JobsDetailsPanel extends JobsPanel {
       }
       summary[key] += 1;
     }
+    return summary;
+  }
 
-    const keys = Object.keys(summary).sort();
+  static _buildDetailsHtmlSummary (summary) {
+    let detailsHTML = "";
+    const keys = Object.keys(summary).sort(Utils.mySortFunction);
     for (const key of keys) {
-      detailsHTML += ", ";
-      if (key === "0-0") {
-        detailsHTML += "<span style='color: green'>";
-        detailsHTML += Utils.txtZeroOneMany(summary[key], "", "{0} success", "{0} successes");
-      } else if (key.startsWith("0-")) {
-        detailsHTML += "<span style='color: orange'>";
-        detailsHTML += Utils.txtZeroOneMany(summary[key], "", "{0} success", "{0} successes");
-      } else if (key.startsWith("1-")) {
-        detailsHTML += "<span style='color: red'>";
-        detailsHTML += Utils.txtZeroOneMany(summary[key], "", "{0} failure", "{0} failures");
-      } else {
-        // if (key.startsWith("2-"))
-        detailsHTML += "<span>";
-        detailsHTML += Utils.txtZeroOneMany(summary[key], "", "{0} unknown result", "{0} unknown results");
-      }
-      if (key !== "0-0" && key !== "1-1" && key !== "2-unknown") {
-        // don't show the retcode for expected combinations
-        detailsHTML += "(" + key.substring(2) + ")";
-      }
-      detailsHTML += "</span>";
+      detailsHTML += JobsDetailsPanel._buildSummaryItem(key, summary[key]);
     }
+    return detailsHTML;
+  }
 
-    let refreshVisible = true;
+  static _buildSummaryItem (key, count) {
+    let html = ", ";
+    if (key === "0-0") {
+      html += "<span style='color: green'>";
+      html += Utils.txtZeroOneMany(count, "", "{0} success", "{0} successes");
+    } else if (key.startsWith("0-")) {
+      html += "<span style='color: orange'>";
+      html += Utils.txtZeroOneMany(count, "", "{0} success", "{0} successes");
+    } else if (key.startsWith("1-")) {
+      html += "<span style='color: red'>";
+      html += Utils.txtZeroOneMany(count, "", "{0} failure", "{0} failures");
+    } else {
+      // if (key.startsWith("2-"))
+      html += "<span>";
+      html += Utils.txtZeroOneMany(count, "", "{0} unknown result", "{0} unknown results");
+    }
+    if (key !== "0-0" && key !== "1-1" && key !== "2-unknown") {
+      // don't show the retcode for expected combinations
+      html += "(" + key.substring(2) + ")";
+    }
+    html += "</span>";
+    return html;
+  }
+
+  static _shouldShowRefreshButton (pData, keyCount, jobTr) {
     if (keyCount === pData.Minions.length) {
       // we have results for each minion
-      refreshVisible = false;
+      return false;
     }
     const statusSpan = jobTr.querySelector("td span.job-status");
-    if (statusSpan && statusSpan.innerText === "done") {
+    if (statusSpan?.innerText === "done") {
       // the system said that the job was done
       // but still maybe some results are missing
       // but these are not underway
-      refreshVisible = false;
+      return false;
     }
+    return true;
+  }
+
+  static _populateDetailsSpan (detailsSpan, pJobId, detailsHTML, refreshVisible) {
     const span = Utils.createJobStatusSpan(pJobId, refreshVisible);
     detailsSpan.innerText = "";
     detailsSpan.appendChild(span);
